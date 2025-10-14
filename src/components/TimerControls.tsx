@@ -8,6 +8,8 @@ interface TimerControlsProps {
   autoRestart: boolean;
   setAutoRestart: (val: boolean) => void;
   startLabel?: string;
+  hideStartButton?: boolean;
+  hideAutoRestart?: boolean;
 }
 
 const TimerControls: React.FC<TimerControlsProps> = ({
@@ -18,6 +20,8 @@ const TimerControls: React.FC<TimerControlsProps> = ({
   autoRestart,
   setAutoRestart,
   startLabel = 'Start',
+  hideStartButton = false,
+  hideAutoRestart = false,
 }) => {
   const [inputValue, setInputValue] = useState(timer === 0 ? '' : String(timer));
 
@@ -55,7 +59,7 @@ const TimerControls: React.FC<TimerControlsProps> = ({
 
   return (
     <div className="timer-section">
-      <label>
+      <label style={{ display: 'flex', alignItems: 'center' }}>
         {/* Set Timer (seconds): */}
         <input
           type="text"
@@ -68,20 +72,24 @@ const TimerControls: React.FC<TimerControlsProps> = ({
           disabled={isRunning}
         />
       </label>
-      <button onClick={onStartPause}>
-        {isRunning ? 'Pause' : startLabel}
-      </button>
-      <label style={{ marginLeft: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-        Auto-restart timer after exercise
-        <span className="toggle-switch">
-          <input
-            type="checkbox"
-            checked={autoRestart}
-            onChange={e => setAutoRestart(e.target.checked)}
-          />
-          <span className="toggle-slider" />
-        </span>
-      </label>
+      {!hideStartButton && (
+        <button onClick={onStartPause}>
+          {isRunning ? 'Pause' : startLabel}
+        </button>
+      )}
+      {!hideAutoRestart && (
+        <label style={{ marginLeft: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+          Auto-restart timer after exercise
+          <span className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={autoRestart}
+              onChange={e => setAutoRestart(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </span>
+        </label>
+      )}
     </div>
   );
 };

@@ -411,6 +411,14 @@ function App() {
     } catch (e) {}
   };
 
+  // Reusable cancel / return-to-home handler (same behavior as the Cancel button)
+  const handleCancel = () => {
+    setShowPrompt(false);
+    setRepsCount(0);
+    setTimeLeft(timer);
+    try { stopCamera(); } catch {}
+  };
+
   // Ensure camera stops when prompt is closed
   useEffect(() => {
     if (!showPrompt) {
@@ -461,7 +469,16 @@ function App() {
       {/* ...existing code... */}
       {/* Top Navigation Bar */}
       <nav className="top-nav">
-        <div className="nav-title">DeskFit</div>
+        <div
+          className="nav-title"
+          role="button"
+          tabIndex={0}
+          onClick={handleCancel}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCancel(); } }}
+          style={{ cursor: 'pointer' }}
+        >
+          DeskFit
+        </div>
         <div className="nav-actions">
           {/* ...existing nav actions... */}
           <button
@@ -520,25 +537,42 @@ function App() {
       )}
       {/* Timer Controls */}
       {!showPrompt && (
-        <div style={{ marginBottom: 24, display: 'flex', gap: 16, alignItems: 'center' }}>
-          <label htmlFor="timer-input" style={{ display: 'block', marginBottom: 4 }}>
-            Time until next exercise reminder (seconds):
-          </label>
-          <TimerControls
-            timer={timer}
-            setTimer={setTimer}
-            isRunning={isRunning}
-            onStartPause={() => setIsRunning(!isRunning)}
-            autoRestart={autoRestart}
-            setAutoRestart={setAutoRestart}
-            startLabel="Start Timer"
-          />
-          <button
-            style={{ marginLeft: 8, background: '#2196f3', color: '#fff', fontWeight: 600, padding: '0.7em 1.6em', borderRadius: 8, border: 'none', cursor: 'pointer' }}
-            onClick={() => setShowPrompt(true)}
-          >
-            Exercise Now
-          </button>
+        <div style={{ marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', justifyContent: 'center' }}>
+            <label htmlFor="timer-input" style={{ margin: 0 }}>
+              Time until next exercise reminder (seconds):
+            </label>
+            <div style={{ minWidth: 160 }}>
+              <TimerControls
+                timer={timer}
+                setTimer={setTimer}
+                isRunning={isRunning}
+                onStartPause={() => setIsRunning(!isRunning)}
+                autoRestart={autoRestart}
+                setAutoRestart={setAutoRestart}
+                startLabel="Start Timer"
+                hideStartButton={true}
+                hideAutoRestart={true}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button className="button-nowrap" onClick={() => setIsRunning(!isRunning)}>{isRunning ? 'Pause Timer' : 'Start Timer'}</button>
+            <button className="button-nowrap" style={{ background: '#2196f3', padding: '0.7em 1.2em' }} onClick={() => setShowPrompt(true)}>Exercise Now</button>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              Auto-restart timer after exercise
+              <span className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={autoRestart}
+                  onChange={e => setAutoRestart(e.target.checked)}
+                />
+                <span className="toggle-slider" />
+              </span>
+            </label>
+          </div>
         </div>
       )}
       {/* History Modal */}

@@ -137,6 +137,12 @@ button:disabled {
   background: #b0c4de;
   cursor: not-allowed;
 }
+/* Utility class to prevent button text wrapping and keep buttons compact */
+.button-nowrap {
+  white-space: nowrap;
+  padding: 0.6em 1.2em;
+  font-size: 1rem;
+}
 button:hover:not(:disabled) {
   background: #43a047;
   box-shadow: 0 4px 16px 0 rgba(60, 80, 120, 0.13);
