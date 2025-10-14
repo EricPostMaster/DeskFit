@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getToday, getWeekday } from '../utils/date';
+// import { getToday, getWeekday } from '../utils/date';
 
 export function useExerciseHistory(
   repsKey: string,

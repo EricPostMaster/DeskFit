@@ -7,6 +7,7 @@ interface HistoryModalProps {
   dailyGoal: Record<string, number>;
   tasksHistory: Record<string, number>;
   getHeatmapColor: (percent: number) => string;
+  showTooltip: boolean;
 }
 
 const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
