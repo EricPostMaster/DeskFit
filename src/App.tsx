@@ -15,7 +15,7 @@ function showExerciseNotification() {
     try {
       const notification = new Notification("DeskFit: Time for your exercise!", {
         body: "Click to return to DeskFit and start your exercise.",
-        icon: "/DeskFit/vite.svg",
+        icon: "/nerd_flex.png",
         requireInteraction: true
       });
       notification.onclick = () => {
