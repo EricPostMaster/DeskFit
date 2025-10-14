@@ -1,4 +1,81 @@
 import React, { useState, useEffect, useRef } from 'react';
+
+// Utility to request notification permission
+function requestNotificationPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().then(() => {
+      /* noop - caller can check Notification.permission */
+    });
+  }
+}
+
+// Utility to show a notification and focus window on click
+function showExerciseNotification() {
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      const notification = new Notification("DeskFit: Time for your exercise!", {
+        body: "Click to return to DeskFit and start your exercise.",
+        icon: "/DeskFit/vite.svg",
+        requireInteraction: true
+      });
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    } catch (e) {
+      // Some browsers may throw when options are unsupported
+      try {
+        new Notification("DeskFit: Time for your exercise!");
+      } catch {}
+    }
+  }
+}
+
+// Play a short alarm via WebAudio (works better than relying solely on notifications)
+function playAlarm(durationMs = 350, frequency = 1200) {
+  try {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+      ctx.resume().catch(() => {});
+    }
+
+    // Gentle two-part ding: short high tone then a slightly lower short tone
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.connect(ctx.destination);
+
+    const makeTone = (freq: number, startOffset: number, durMs: number) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, now + startOffset);
+      o.connect(gain);
+      const s = now + startOffset;
+      const e = s + durMs / 1000;
+      // soft envelope
+      gain.gain.setValueAtTime(0.0001, s);
+      gain.gain.linearRampToValueAtTime(0.06, s + 0.01);
+      gain.gain.linearRampToValueAtTime(0.0001, e - 0.02);
+      o.start(s);
+      o.stop(e + 0.01);
+      return o;
+    };
+
+    // First ding: short
+    makeTone(frequency, 0, Math.min(220, durationMs));
+    // Second ding: lower and softer
+    makeTone(Math.max(600, Math.round(frequency * 0.75)), 0.12, Math.min(180, durationMs - 120));
+
+    // Close context shortly after tones finish
+    setTimeout(() => {
+      try { ctx.close(); } catch {}
+    }, durationMs + 300);
+  } catch (e) {
+    // ignore
+  }
+}
 import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
 import './App.css';
@@ -87,6 +164,56 @@ function getHeatmapColor(percent: number) {
 }
 
 function App() {
+  // Debug: manually trigger notification
+  const handleDebugNotification = () => {
+    // play sound + notification
+    playAlarm();
+    showExerciseNotification();
+  };
+
+  // Urgent alert fallback when notifications are blocked
+  const [urgentAlert, setUrgentAlert] = useState(false);
+  const urgentIntervalRef = useRef<number | null>(null);
+
+  const startUrgentAlert = () => {
+    setUrgentAlert(true);
+    // play immediately and then every 2s
+    try { playAlarm(1200, 880); } catch {}
+    try { if (navigator && 'vibrate' in navigator) (navigator as any).vibrate?.([200,100,200]); } catch {}
+    urgentIntervalRef.current = window.setInterval(() => {
+      try { playAlarm(1200, 880); } catch {}
+      try { if (navigator && 'vibrate' in navigator) (navigator as any).vibrate?.([200,100,200]); } catch {}
+    }, 2000) as unknown as number;
+  };
+
+  const stopUrgentAlert = () => {
+    setUrgentAlert(false);
+    if (urgentIntervalRef.current) {
+      clearInterval(urgentIntervalRef.current as number);
+      urgentIntervalRef.current = null;
+    }
+  };
+
+  // Notification permission state for UI
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
+    (typeof Notification !== 'undefined' && Notification.permission) ? Notification.permission : 'default'
+  );
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof Notification !== 'undefined') setNotifPermission(Notification.permission);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleRequestPermission = () => {
+    if (typeof Notification !== 'undefined') {
+      Notification.requestPermission().then(p => setNotifPermission(p));
+    }
+  };
+  // Ask for notification permission on mount
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
   // --- UI for editing daily goal and default reps ---
   const weekday = getWeekday();
   // --- State with localStorage persistence ---
@@ -111,6 +238,8 @@ function App() {
   const [showPrefs, setShowPrefs] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const prefsRef = useRef<HTMLDivElement>(null);
+  // Shared video ref for webcam so App can stop tracks when prompt closes
+  const sharedVideoRef = useRef<HTMLVideoElement>(null);
 
   // --- Preferences form state ---
   const [prefsTimer, setPrefsTimer] = useState(timer);
@@ -171,6 +300,15 @@ function App() {
             if (timerInterval) clearInterval(timerInterval);
             setShowPrompt(true);
             setIsRunning(false);
+            // Play alarm and show notification when timer completes
+            try { playAlarm(); } catch {}
+            try { if (navigator && 'vibrate' in navigator) (navigator as any).vibrate?.([200,100,200]); } catch {}
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+              showExerciseNotification();
+            } else {
+              // Notifications blocked/ungranted -> show urgent overlay + repeating alarm
+              startUrgentAlert();
+            }
             return 0;
           }
           return prev - 1;
@@ -225,6 +363,10 @@ function App() {
     setShowPrompt(false);
     setRepsCount(0);
     setTimeLeft(timer);
+    // stop any urgent alert overlay/alarm
+    try { stopUrgentAlert(); } catch {}
+    // stop camera tracks if any
+    try { stopCamera(); } catch {}
     const today = getToday();
     setRepsHistory((prev: Record<string, Record<string, number>>) => {
       const updated = { ...prev };
@@ -244,6 +386,37 @@ function App() {
       setIsRunning(true);
     }
   };
+
+  // Stop camera helper
+  const stopCamera = () => {
+    try {
+      // stop tracks on the shared video ref if present
+      const vid = sharedVideoRef.current;
+      if (vid && (vid as HTMLVideoElement).srcObject) {
+        const tracks = ((vid as HTMLVideoElement).srcObject as MediaStream).getTracks();
+        tracks.forEach(t => { try { t.stop(); } catch {} });
+        (vid as HTMLVideoElement).srcObject = null;
+      }
+      // also defensively stop any other video elements that may have a stream
+      const vids = Array.from(document.getElementsByTagName('video')) as HTMLVideoElement[];
+      vids.forEach(v => {
+        try {
+          if (v && v.srcObject) {
+            const tracks = (v.srcObject as MediaStream).getTracks();
+            tracks.forEach(t => { try { t.stop(); } catch {} });
+            v.srcObject = null;
+          }
+        } catch (e) {}
+      });
+    } catch (e) {}
+  };
+
+  // Ensure camera stops when prompt is closed
+  useEffect(() => {
+    if (!showPrompt) {
+      try { stopCamera(); } catch {}
+    }
+  }, [showPrompt]);
 
   // Hide progress bar when returning to prompt screen
   useEffect(() => {
@@ -278,10 +451,19 @@ function App() {
 
   return (
     <div className="app-container">
+      {urgentAlert && (
+        <div style={{position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 2000}} onClick={stopUrgentAlert}>
+          <h1 style={{fontSize: 36, margin: 0}}>Time for your exercise!</h1>
+          <p style={{fontSize: 18, marginTop: 12}}>Click anywhere to dismiss and return to DeskFit.</p>
+          <button style={{marginTop: 24, padding: '0.8em 1.6em', fontSize: 16}} onClick={stopUrgentAlert}>Dismiss</button>
+        </div>
+      )}
+      {/* ...existing code... */}
       {/* Top Navigation Bar */}
       <nav className="top-nav">
         <div className="nav-title">DeskFit</div>
         <div className="nav-actions">
+          {/* ...existing nav actions... */}
           <button
             aria-label="History"
             className="nav-btn"
@@ -393,10 +575,12 @@ function App() {
             setRepsCount={setRepsCount}
             onDone={handleDone}
             exercise={selectedExercise}
+            videoRef={sharedVideoRef}
             onCancel={() => {
               setShowPrompt(false);
               setRepsCount(0);
               setTimeLeft(timer);
+              try { stopCamera(); } catch {}
             }}
           />
         ) : (

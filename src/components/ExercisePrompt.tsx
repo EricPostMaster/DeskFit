@@ -10,11 +10,13 @@ interface ExercisePromptProps {
   onDone: () => void;
   exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses'
   onCancel?: () => void;
+  videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
-const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, setRepsCount, onDone, exercise, onCancel }) => {
-  const videoRef = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
-  usePoseDetection({ videoRef, enabled: true, repsTarget, setRepsCount, exercise });
+const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, setRepsCount, onDone, exercise, onCancel, videoRef }) => {
+  const innerRef = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
+  const usedRef = videoRef || innerRef;
+  usePoseDetection({ videoRef: usedRef, enabled: true, repsTarget, setRepsCount, exercise });
 
   // Listen for Enter key to trigger Done when rep target is reached
   useEffect(() => {
@@ -38,7 +40,7 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
       <div className="webcam-section">
         <WebcamFeed
           show={true}
-          videoRef={videoRef}
+          videoRef={usedRef}
           aspect={
             exercise === 'shoulder_presses' ? 'wide' :
             exercise === 'squats' ? 'tall' :

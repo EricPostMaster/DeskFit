@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 
 interface UsePoseDetectionProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   enabled: boolean;
   repsTarget: number;
   setRepsCount: (val: number) => void;
