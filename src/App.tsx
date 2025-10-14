@@ -240,6 +240,9 @@ function App() {
   const prefsRef = useRef<HTMLDivElement>(null);
   // Shared video ref for webcam so App can stop tracks when prompt closes
   const sharedVideoRef = useRef<HTMLVideoElement>(null);
+  // Timer refs for robust background timing
+  const timerIntervalRef = useRef<number | null>(null);
+  const endTimeRef = useRef<number | null>(null);
 
   // --- Preferences form state ---
   const [prefsTimer, setPrefsTimer] = useState(timer);
@@ -289,36 +292,82 @@ function App() {
     setupBackend();
   }, []);
 
-  // --- Timer countdown logic ---
+  // --- Timer countdown logic (time-based to survive background throttling) ---
+  // We compute remaining seconds from an end timestamp rather than relying on
+  // setInterval ticks alone. This keeps the timer accurate if the browser
+  // throttles timers when the tab is hidden.
   useEffect(() => {
-    let timerInterval: ReturnType<typeof setInterval> | null = null;
+    // clear any existing interval
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current as number);
+      timerIntervalRef.current = null;
+    }
+
+    // If timer was started and prompt is not showing, compute an end time and
+    // start a short interval to update visible remaining seconds from system time.
     if (isRunning && !showPrompt) {
-      setTimeLeft(timer);
-      timerInterval = setInterval(() => {
-        setTimeLeft((prev: number) => {
-          if (prev <= 1) {
-            if (timerInterval) clearInterval(timerInterval);
+      // Establish an end time based on current timeLeft (this covers both
+      // fresh start and resume).
+      endTimeRef.current = Date.now() + timeLeft * 1000;
+
+      const tick = () => {
+        if (!endTimeRef.current) return;
+        const now = Date.now();
+        const remaining = Math.max(0, Math.round((endTimeRef.current - now) / 1000));
+        setTimeLeft((prev) => {
+          if (remaining <= 0) {
+            // complete
+            if (timerIntervalRef.current) {
+              clearInterval(timerIntervalRef.current as number);
+              timerIntervalRef.current = null;
+            }
+            endTimeRef.current = null;
             setShowPrompt(true);
             setIsRunning(false);
-            // Play alarm and show notification when timer completes
             try { playAlarm(); } catch {}
             try { if (navigator && 'vibrate' in navigator) (navigator as any).vibrate?.([200,100,200]); } catch {}
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
               showExerciseNotification();
             } else {
-              // Notifications blocked/ungranted -> show urgent overlay + repeating alarm
               startUrgentAlert();
             }
             return 0;
           }
-          return prev - 1;
+          return remaining;
         });
-      }, 1000);
+      };
+
+      // Run immediately then on short interval. Use 500ms to keep UI responsive
+      // but it's safe if the browser throttles the timer since remaining is
+      // computed from Date.now().
+      tick();
+      timerIntervalRef.current = window.setInterval(tick, 500) as unknown as number;
+    } else {
+      // Not running (paused or prompt). Clear endTime and ensure timeLeft is
+      // accurate relative to any previously-set endTime.
+      if (endTimeRef.current) {
+        const remaining = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        endTimeRef.current = null;
+      } else if (!isRunning) {
+        // If we're not running and there was no endTime, ensure timeLeft matches
+        // the configured timer value.
+        setTimeLeft(timer);
+      }
     }
+
     return () => {
-      if (timerInterval) clearInterval(timerInterval);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current as number);
+        timerIntervalRef.current = null;
+      }
     };
-  }, [isRunning, timer, showPrompt]);
+  }, [isRunning, timer, showPrompt, timeLeft]);
+
+  // Keep timeLeft in sync when the configured timer changes while not running
+  useEffect(() => {
+    if (!isRunning && !showPrompt) setTimeLeft(timer);
+  }, [timer, isRunning, showPrompt]);
 
   // --- Progress Visual ---
   const today = getToday();
