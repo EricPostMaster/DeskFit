@@ -95,7 +95,7 @@ const LS_KEYS = {
 
 // --- Default Values ---
 const DEFAULT_TIMER = 60;
-const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12 };
+const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12 };
 const DEFAULT_GOAL = { Mon: 5, Tue: 5, Wed: 5, Thu: 5, Fri: 5, Sat: 2, Sun: 2 };
 
 // --- Helper Functions ---
@@ -137,6 +137,8 @@ function populateSampleHistory() {
         squats: Math.floor(Math.random() * 30),
         jumping_jacks: Math.floor(Math.random() * 30),
         shoulder_presses: Math.floor(Math.random() * 30),
+        lateral_raise: Math.floor(Math.random() * 30),
+        knee_raises: Math.floor(Math.random() * 30),
       };
       tasksHistory[dateStr] = Math.floor(Math.random() * 7);
     }
@@ -147,11 +149,11 @@ function populateSampleHistory() {
 
 // --- Helper: Heatmap Colors ---
 const HEATMAP_COLORS = [
-  '#e0e7ef', // 0% (lightest)
-  '#b2d6f6', // 1-24%
-  '#7fc6ee', // 25-49%
-  '#4fa3e3', // 50-74%
-  '#2286c3', // 75-99%
+  '#edf7ed', // 0% (lightest)
+  '#cfeecd', // 1-24%
+  '#a8e2a3', // 25-49%
+  '#6fc96a', // 50-74%
+  '#38b24a', // 75-99%
   '#1b5e20', // 100%+ (darkest)
 ];
 function getHeatmapColor(percent: number) {
@@ -563,6 +565,8 @@ function App() {
               <option value="squats">Squats</option>
               <option value="jumping_jacks">Jumping Jacks</option>
               <option value="shoulder_presses">Shoulder Presses</option>
+              <option value="lateral_raise">Lateral Raise</option>
+              <option value="knee_raises">Knee Raises</option>
             </select>
           </div>
           <div style={{ flex: 1 }}>

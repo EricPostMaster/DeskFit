@@ -4,14 +4,18 @@ interface WebcamFeedProps {
   show: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   aspect?: 'wide' | 'tall' | 'square';
+  // Optional callback to notify parent about the intrinsic (videoWidth/videoHeight) dimensions
+  // once available. Useful so other hooks (like pose detection) can prefer the largest observed size.
+  onMaxVideoSizeChange?: (size: { width: number; height: number }) => void;
 }
 
-const WebcamFeed: React.FC<WebcamFeedProps> = ({ show, videoRef, aspect = 'tall' }) => {
+const WebcamFeed: React.FC<WebcamFeedProps> = ({ show, videoRef, aspect = 'tall', onMaxVideoSizeChange }) => {
   const streamRef = React.useRef<MediaStream | null>(null);
 
   useEffect(() => {
     let mounted = true;
     let startAttemptTimer: number | null = null;
+    let currentMax = { width: 0, height: 0 };
 
     const stopStream = () => {
       try {
@@ -54,7 +58,25 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({ show, videoRef, aspect = 'tall'
         streamRef.current = stream;
         try {
           videoRef.current!.srcObject = stream;
-          videoRef.current!.onloadedmetadata = () => { try { videoRef.current!.play(); } catch {} };
+          videoRef.current!.onloadedmetadata = () => {
+            try { videoRef.current!.play(); } catch {}
+            // capture intrinsic video dimensions and persist the max seen
+            try {
+              const vw = videoRef.current!.videoWidth || videoRef.current!.width || 0;
+              const vh = videoRef.current!.videoHeight || videoRef.current!.height || 0;
+              if (vw > currentMax.width || vh > currentMax.height) {
+                currentMax = { width: Math.max(currentMax.width, vw), height: Math.max(currentMax.height, vh) };
+                // Apply the max display size to the element so downstream consumers see the larger area
+                try {
+                  videoRef.current!.width = currentMax.width;
+                  videoRef.current!.height = currentMax.height;
+                } catch {}
+                if (typeof onMaxVideoSizeChange === 'function') {
+                  try { onMaxVideoSizeChange(currentMax); } catch {}
+                }
+              }
+            } catch {}
+          };
         } catch (e) {
           // fallback if assigning srcObject fails
         }

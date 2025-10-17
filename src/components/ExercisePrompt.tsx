@@ -35,17 +35,16 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
       <p>Do {repsTarget} {
         exercise === 'squats' ? 'squats' :
         exercise === 'jumping_jacks' ? 'jumping jacks' :
-        exercise === 'shoulder_presses' ? 'shoulder presses' : 'reps'
+        exercise === 'shoulder_presses' ? 'shoulder presses' :
+        exercise === 'lateral_raise' ? 'lateral raises' :
+        exercise === 'knee_raises' ? 'knee raises' : 'reps'
       }</p>
       <div className="webcam-section">
         <WebcamFeed
           show={true}
           videoRef={usedRef}
-          aspect={
-            exercise === 'shoulder_presses' ? 'wide' :
-            exercise === 'squats' ? 'tall' :
-            exercise === 'jumping_jacks' ? 'square' : 'tall'
-          }
+          // Force the widest/tallest (shoulder press) area for best pose detection across exercises
+          aspect={'wide'}
         />
       </div>
       <div className="rep-counter">

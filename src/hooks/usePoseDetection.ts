@@ -6,7 +6,7 @@ interface UsePoseDetectionProps {
   enabled: boolean;
   repsTarget: number;
   setRepsCount: (val: number) => void;
-  exercise: string; // 'squats' | 'jumping_jacks'
+  exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses' | 'lateral_raise' | 'knee_raises'
 }
 
 export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, exercise }: UsePoseDetectionProps) {
@@ -15,9 +15,12 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
   const lastRepTimeRef = useRef<number>(0);
   const REP_DEBOUNCE_MS = 800;
   const repsCountRef = useRef(0);
+  // Keep the maximum webcam dimensions observed during shoulder presses
+  const maxVideoSizeRef = useRef<{ width: number; height: number } | null>(null);
 
   useEffect(() => {
     let animationId: number;
+
     async function runPoseDetection() {
       if (!videoRef.current) return;
       if (!detectorRef.current) {
@@ -26,6 +29,7 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
           { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
         );
       }
+
       const detect = async () => {
         if (!videoRef.current || videoRef.current.readyState < 2) {
           animationId = requestAnimationFrame(detect);
@@ -35,30 +39,49 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
           animationId = requestAnimationFrame(detect);
           return;
         }
+
+        // Observe intrinsic video dimensions
+        const intrinsicW = videoRef.current.videoWidth || videoRef.current.width || 640;
+        const intrinsicH = videoRef.current.videoHeight || videoRef.current.height || 480;
+        // If we're running shoulder_presses, update the max dimensions
+        if (exercise === 'shoulder_presses') {
+          if (!maxVideoSizeRef.current) {
+            maxVideoSizeRef.current = { width: intrinsicW, height: intrinsicH };
+          } else {
+            maxVideoSizeRef.current = {
+              width: Math.max(maxVideoSizeRef.current.width, intrinsicW),
+              height: Math.max(maxVideoSizeRef.current.height, intrinsicH),
+            };
+          }
+        }
+        // Apply max size (so all exercises use the shoulder-press webcam area when available)
+        if (maxVideoSizeRef.current && videoRef.current) {
+          videoRef.current.width = maxVideoSizeRef.current.width;
+          videoRef.current.height = maxVideoSizeRef.current.height;
+        }
+
         const poses = await detectorRef.current.estimatePoses(videoRef.current);
         if (poses && poses[0]) {
           const keypoints = poses[0].keypoints;
-          // --- Exercise-specific logic ---
           const now = Date.now();
-          if (exercise === 'shoulder_presses') {
-            // Detect both wrists above shoulders (shoulder press)
+
+          // helper: detect both wrists above respective shoulders
+          const armsAboveShoulders = (() => {
             const leftWrist = keypoints.find(k => k.name === 'left_wrist');
             const rightWrist = keypoints.find(k => k.name === 'right_wrist');
             const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
             const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
-            const armsAboveShoulders =
-              leftWrist && rightWrist && leftShoulder && rightShoulder &&
-              leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
-            if (
-              armsAboveShoulders &&
-              !lastArmUpRef.current &&
-              now - lastRepTimeRef.current > REP_DEBOUNCE_MS
-            ) {
+            return !!(leftWrist && rightWrist && leftShoulder && rightShoulder && leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y);
+          })();
+
+          if (exercise === 'shoulder_presses' || exercise === 'lateral_raise' || exercise === 'jumping_jacks') {
+            // All three use same arms-above-shoulders detection per request
+            if (armsAboveShoulders && !lastArmUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
               repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
               setRepsCount(repsCountRef.current);
               lastRepTimeRef.current = now;
             }
-            lastArmUpRef.current = !!armsAboveShoulders;
+            lastArmUpRef.current = armsAboveShoulders;
           } else if (exercise === 'squats') {
             // Improved squat detection: average hip at least 0.25x torso length below average shoulder
             const leftHip = keypoints.find(k => k.name === 'left_hip');
@@ -71,55 +94,44 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
               const torsoLength = Math.abs(avgShoulderY - avgHipY);
               const squatThreshold = avgShoulderY + 0.25 * torsoLength;
               const isSquatting = avgHipY > squatThreshold;
-              // Track state: standing -> squat -> standing
-              if (
-                isSquatting &&
-                !lastArmUpRef.current &&
-                now - lastRepTimeRef.current > REP_DEBOUNCE_MS
-              ) {
+              if (isSquatting && !lastArmUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
                 repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
                 setRepsCount(repsCountRef.current);
                 lastRepTimeRef.current = now;
               }
               lastArmUpRef.current = isSquatting;
             }
-          } else if (exercise === 'jumping_jacks') {
-            // Detect jumping jack by arms and legs spread
-            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
-            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
-            const leftAnkle = keypoints.find(k => k.name === 'left_ankle');
-            const rightAnkle = keypoints.find(k => k.name === 'right_ankle');
-            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
-            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
-            const armsUp =
-              leftWrist && rightWrist && leftShoulder && rightShoulder &&
-              leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y;
-            let legsApart = false;
-            if (leftAnkle && rightAnkle && leftShoulder && rightShoulder) {
-              legsApart = Math.abs(leftAnkle.x - rightAnkle.x) > 1.5 * Math.abs(leftShoulder.x - rightShoulder.x);
+          } else if (exercise === 'knee_raises') {
+            // Detect single knee raised to hip level or above (one knee at a time). Count when a knee goes up.
+            const leftKnee = keypoints.find(k => k.name === 'left_knee');
+            const rightKnee = keypoints.find(k => k.name === 'right_knee');
+            const leftHip = keypoints.find(k => k.name === 'left_hip');
+            const rightHip = keypoints.find(k => k.name === 'right_hip');
+            if (leftKnee && rightKnee && leftHip && rightHip) {
+              const leftKneeUp = leftKnee.y < leftHip.y;
+              const rightKneeUp = rightKnee.y < rightHip.y;
+              const singleKneeUp = (leftKneeUp && !rightKneeUp) || (rightKneeUp && !leftKneeUp);
+              if (singleKneeUp && !lastArmUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
+                repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
+                setRepsCount(repsCountRef.current);
+                lastRepTimeRef.current = now;
+              }
+              lastArmUpRef.current = singleKneeUp;
             }
-            const jackPose = armsUp && legsApart;
-            if (
-              jackPose &&
-              !lastArmUpRef.current &&
-              now - lastRepTimeRef.current > REP_DEBOUNCE_MS
-            ) {
-              repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
-              setRepsCount(repsCountRef.current);
-              lastRepTimeRef.current = now;
-            }
-            lastArmUpRef.current = !!jackPose;
           }
-          // --- End exercise-specific logic ---
         }
+
         animationId = requestAnimationFrame(detect);
       };
+
       detect();
     }
+
     if (enabled && videoRef.current) {
       repsCountRef.current = 0;
       runPoseDetection();
     }
+
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
       if (detectorRef.current) {
@@ -129,5 +141,5 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
       lastArmUpRef.current = false;
       repsCountRef.current = 0;
     };
-  }, [enabled, repsTarget, setRepsCount, videoRef]);
+  }, [enabled, repsTarget, setRepsCount, videoRef, exercise]);
 }
