@@ -24,10 +24,80 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
     async function runPoseDetection() {
       if (!videoRef.current) return;
       if (!detectorRef.current) {
-        detectorRef.current = await poseDetection.createDetector(
-          poseDetection.SupportedModels.MoveNet,
-          { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
-        );
+        // Try to load MoveNet (default). In some environments TF Hub blocks direct
+        // browser access and returns 403 (see runtime error). If that happens,
+        // fall back to MediaPipe's BlazePose implementation which is bundled and
+        // served from the jsdelivr CDN.
+        try {
+          // Prefer a locally-hosted MoveNet TFJS model if the developer has placed
+          // model files under `public/models/movenet/` (model.json + shards).
+          // This avoids remote fetches to tfhub/kaggle and keeps the app
+          // deterministic and privacy-friendly.
+          // Resolve the local model path against the app base. Vite may serve
+          // the app under a subpath (e.g. '/DeskFit/'), so using a root-absolute
+          // URL ('/models/...') can return 404. Use import.meta.env.BASE_URL when
+          // available to build the correct path.
+          const viteBase = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL) ? (import.meta as any).env.BASE_URL : '/';
+          const baseNoSlash = viteBase.endsWith('/') ? viteBase.slice(0, -1) : viteBase;
+          const localModelUrl = `${baseNoSlash}/models/movenet/model.json`;
+
+          const tryLocal = async () => {
+            try {
+              // createDetector accepts an optional `modelUrl` override via
+              // `config.modelUrl` for some backends. The pose-detection API
+              // doesn't document every backend's config shape, so we attempt
+              // to fetch the local model.json first as a sanity check.
+              const res = await fetch(localModelUrl, { method: 'HEAD' });
+              if (res.ok) {
+                return await poseDetection.createDetector(
+                  poseDetection.SupportedModels.MoveNet,
+                  { modelUrl: localModelUrl, modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+                );
+              }
+            } catch (e) {
+              // ignore and let fallback happen
+            }
+            return null;
+          };
+
+          // 1) try local
+          detectorRef.current = await tryLocal();
+          if (!detectorRef.current) {
+            // 2) try the canonical MoveNet entry (TF Hub / Kaggle). Recent
+            // redirects have moved some TF Hub assets to Kaggle; the pose
+            // detection loader will still try TF Hub by default. We attempt
+            // to explicitly point at the Kaggle-hosted TFJS model if needed.
+            // NOTE: Kaggle pages are HTML, not direct model.json, so the URL
+            // below is only useful if the TFJS artifacts are directly hosted
+            // at a stable URL. Many Kaggle model pages are not raw file hosts.
+            // We'll attempt the default loader first (which may fetch from
+            // tfhub) and only fall back to BlazePose on failure.
+            detectorRef.current = await poseDetection.createDetector(
+              poseDetection.SupportedModels.MoveNet,
+              { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+            );
+          }
+        } catch (err) {
+          // MoveNet failed to load (e.g. 403 from tfhub). Attempt a graceful
+          // fallback to BlazePose using the MediaPipe runtime.
+          // This keeps pose detection working locally without depending on TF Hub.
+          // Note: BlazePose has slightly different characteristics but exposes
+          // compatible keypoint names for our usage.
+          // Log the original error to help debugging.
+          // eslint-disable-next-line no-console
+          console.warn('MoveNet model failed to load, falling back to BlazePose (MediaPipe).', err);
+          try {
+            detectorRef.current = await poseDetection.createDetector(
+              poseDetection.SupportedModels.BlazePose,
+              { runtime: 'mediapipe', solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose' }
+            );
+          } catch (err2) {
+            // Final failure: no detector available. Log and stop.
+            // eslint-disable-next-line no-console
+            console.error('Failed to initialize any pose detector:', err2);
+            return;
+          }
+        }
       }
 
       const detect = async () => {
