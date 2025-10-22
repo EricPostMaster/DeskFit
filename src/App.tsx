@@ -95,7 +95,7 @@ const LS_KEYS = {
 
 // --- Default Values ---
 const DEFAULT_TIMER = 60;
-const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12 };
+const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12, bicep_curls: 12, band_pull_aparts: 12 };
 const DEFAULT_GOAL = { Mon: 5, Tue: 5, Wed: 5, Thu: 5, Fri: 5, Sat: 2, Sun: 2 };
 
 // --- Helper Functions ---
@@ -567,6 +567,8 @@ function App() {
               <option value="shoulder_presses">Shoulder Presses</option>
               <option value="lateral_raise">Lateral Raise</option>
               <option value="knee_raises">Knee Raises</option>
+              <option value="bicep_curls">Bicep Curls</option>
+              <option value="band_pull_aparts">Band Pull-aparts</option>
             </select>
           </div>
           <div style={{ flex: 1 }}>

@@ -7,9 +7,11 @@ interface WebcamFeedProps {
   // Optional callback to notify parent about the intrinsic (videoWidth/videoHeight) dimensions
   // once available. Useful so other hooks (like pose detection) can prefer the largest observed size.
   onMaxVideoSizeChange?: (size: { width: number; height: number }) => void;
+  overlayRef?: React.RefObject<HTMLCanvasElement | null>;
+  showOverlay?: boolean;
 }
 
-const WebcamFeed: React.FC<WebcamFeedProps> = ({ show, videoRef, aspect = 'tall', onMaxVideoSizeChange }) => {
+const WebcamFeed: React.FC<WebcamFeedProps> = ({ show, videoRef, aspect = 'tall', onMaxVideoSizeChange, overlayRef, showOverlay = true }) => {
   const streamRef = React.useRef<MediaStream | null>(null);
 
   useEffect(() => {
@@ -105,14 +107,24 @@ const WebcamFeed: React.FC<WebcamFeedProps> = ({ show, videoRef, aspect = 'tall'
   }
 
   return (
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      width={width}
-      height={height}
-      style={{ transform: 'scaleX(-1)' }}
-    />
+    <div style={{ position: 'relative', display: 'inline-block', width, height }}>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        width={width}
+        height={height}
+        style={{ transform: 'scaleX(-1)', display: 'block', width: '100%', height: '100%' }}
+      />
+      {showOverlay ? (
+        <canvas
+          ref={overlayRef}
+          // Let the hook set the internal pixel size to the video's intrinsic
+          // resolution while keeping the displayed CSS size matched to the wrapper.
+          style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', transform: 'scaleX(-1)', width: '100%', height: '100%' }}
+        />
+      ) : null}
+    </div>
   );
 };
 

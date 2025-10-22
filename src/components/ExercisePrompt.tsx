@@ -16,7 +16,9 @@ interface ExercisePromptProps {
 const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, setRepsCount, onDone, exercise, onCancel, videoRef }) => {
   const innerRef = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
   const usedRef = videoRef || innerRef;
-  usePoseDetection({ videoRef: usedRef, enabled: true, repsTarget, setRepsCount, exercise });
+  const canvasRef = useRef<HTMLCanvasElement>(null) as React.RefObject<HTMLCanvasElement>;
+  usePoseDetection({ videoRef: usedRef, enabled: true, repsTarget, setRepsCount, exercise, overlayRef: canvasRef });
+  const [showOverlay, setShowOverlay] = React.useState(false);
 
   // Listen for Enter key to trigger Done when rep target is reached
   useEffect(() => {
@@ -37,14 +39,31 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
         exercise === 'jumping_jacks' ? 'jumping jacks' :
         exercise === 'shoulder_presses' ? 'shoulder presses' :
         exercise === 'lateral_raise' ? 'lateral raises' :
-        exercise === 'knee_raises' ? 'knee raises' : 'reps'
+        exercise === 'knee_raises' ? 'knee raises' :
+        exercise === 'bicep_curls' ? 'bicep curls' :
+        exercise === 'band_pull_aparts' ? 'band pull-aparts' : 'reps'
       }</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          Show Form Overlay
+          <span className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={showOverlay}
+              onChange={e => setShowOverlay(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </span>
+        </label>
+      </div>
       <div className="webcam-section">
         <WebcamFeed
           show={true}
           videoRef={usedRef}
           // Force the widest/tallest (shoulder press) area for best pose detection across exercises
           aspect={'wide'}
+          overlayRef={canvasRef}
+          showOverlay={showOverlay}
         />
       </div>
       <div className="rep-counter">

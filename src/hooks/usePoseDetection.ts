@@ -6,12 +6,18 @@ interface UsePoseDetectionProps {
   enabled: boolean;
   repsTarget: number;
   setRepsCount: (val: number) => void;
-  exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses' | 'lateral_raise' | 'knee_raises'
+  exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses' | 'lateral_raise' | 'knee_raises' | 'bicep_curls' | 'band_pull_aparts'
+  overlayRef?: React.RefObject<HTMLCanvasElement | null>;
 }
 
-export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, exercise }: UsePoseDetectionProps) {
+export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, exercise, overlayRef }: UsePoseDetectionProps) {
   const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
   const lastArmUpRef = useRef(false);
+  // For per-arm bicep curl detection
+  const lastLeftCurlUpRef = useRef(false);
+  const lastRightCurlUpRef = useRef(false);
+  // Track band pull-apart wide state (both arms moved outward)
+  const bandWideRef = useRef(false);
   const lastRepTimeRef = useRef<number>(0);
   const REP_DEBOUNCE_MS = 800;
   const repsCountRef = useRef(0);
@@ -187,6 +193,157 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
                 lastRepTimeRef.current = now;
               }
               lastArmUpRef.current = singleKneeUp;
+            }
+          } else if (exercise === 'bicep_curls') {
+            // Bicep curls: detect curls per arm independently. We count a rep when
+            // an individual wrist goes from above the elbow (curl up) back down below the elbow.
+            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
+            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
+            const leftElbow = keypoints.find(k => k.name === 'left_elbow');
+            const rightElbow = keypoints.find(k => k.name === 'right_elbow');
+            if (leftWrist && leftElbow) {
+              const leftCurled = leftWrist.y < leftElbow.y;
+              if (leftCurled && !lastLeftCurlUpRef.current) {
+                lastLeftCurlUpRef.current = true;
+              } else if (!leftCurled && lastLeftCurlUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
+                repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
+                setRepsCount(repsCountRef.current);
+                lastRepTimeRef.current = now;
+                lastLeftCurlUpRef.current = false;
+              }
+            }
+            if (rightWrist && rightElbow) {
+              const rightCurled = rightWrist.y < rightElbow.y;
+              if (rightCurled && !lastRightCurlUpRef.current) {
+                lastRightCurlUpRef.current = true;
+              } else if (!rightCurled && lastRightCurlUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
+                repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
+                setRepsCount(repsCountRef.current);
+                lastRepTimeRef.current = now;
+                lastRightCurlUpRef.current = false;
+              }
+            }
+          } else if (exercise === 'band_pull_aparts') {
+            // Band pull-aparts (rear delt): start with hands roughly shoulder-width and in front,
+            // then move them outward to the sides. We'll measure horizontal wrist separation
+            // relative to shoulder width. Count when the user returns from the wide position
+            // back to the starting (narrow) position after a successful outward movement.
+            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
+            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
+            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
+            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+            const leftHip = keypoints.find(k => k.name === 'left_hip');
+            const rightHip = keypoints.find(k => k.name === 'right_hip');
+            if (leftWrist && rightWrist && leftShoulder && rightShoulder && leftHip && rightHip) {
+              const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
+              const wristDistance = Math.abs(leftWrist.x - rightWrist.x);
+              const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+              const avgHipY = (leftHip.y + rightHip.y) / 2;
+              const torsoLength = Math.abs(avgShoulderY - avgHipY) || 1;
+              // Ensure wrists are approximately at shoulder height (horizontal movement)
+              const wristsAtShoulderHeight = Math.abs(leftWrist.y - avgShoulderY) < 0.5 * torsoLength && Math.abs(rightWrist.y - avgShoulderY) < 0.5 * torsoLength;
+              // Revised per-arm radial logic:
+              // - Use each shoulder as the local origin and compute euclidean distance
+              //   from shoulder to corresponding wrist. Define a shoulder "radius"
+              //   as half the shoulder-to-shoulder distance.
+              // - A hand is considered "narrow" when it returns within a fraction
+              //   (e.g., 50%) of that radius around its shoulder. We require both
+              //   hands to reach the wide state and then both to return to narrow
+              //   to count a rep.
+              const shoulderRadius = shoulderWidth / 2;
+              const NARROW_RADIUS_FRAC = 2.0; // 150% of shoulder radius
+              const WIDE_MULTIPLIER = 1.9; // overall separation multiplier to qualify as wide
+
+              const leftDist = Math.hypot(leftWrist.x - leftShoulder.x, leftWrist.y - leftShoulder.y);
+              const rightDist = Math.hypot(rightWrist.x - rightShoulder.x, rightWrist.y - rightShoulder.y);
+
+              const leftNarrow = leftDist < NARROW_RADIUS_FRAC * shoulderRadius;
+              const rightNarrow = rightDist < NARROW_RADIUS_FRAC * shoulderRadius;
+              const narrowBoth = leftNarrow && rightNarrow;
+
+              const wideBoth = wristDistance > WIDE_MULTIPLIER * shoulderWidth && wristsAtShoulderHeight;
+
+              // Cycle detection: require wide -> narrow (both arms) to count.
+              // Only enter the "wide" state if both hands are currently outside
+              // the narrow radius (prevents immediate count when thresholds overlap)
+              // and we respect the debounce window after the last counted rep.
+              const nowSinceLast = now - lastRepTimeRef.current;
+              const canEnterWide = wideBoth && !bandWideRef.current && !leftNarrow && !rightNarrow && nowSinceLast > REP_DEBOUNCE_MS;
+              if (canEnterWide) {
+                bandWideRef.current = true;
+              } else if (bandWideRef.current && narrowBoth && nowSinceLast > REP_DEBOUNCE_MS) {
+                repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
+                setRepsCount(repsCountRef.current);
+                lastRepTimeRef.current = now;
+                bandWideRef.current = false;
+              }
+
+              // Draw overlay if provided: show shoulder radius and wrist positions.
+              try {
+                const canvas = (arguments && arguments.length && (arguments as any)[0]) ? null : null; // noop to keep TS happy
+              } catch {}
+              if (typeof overlayRef !== 'undefined' && overlayRef && overlayRef.current) {
+                const canvas = overlayRef.current;
+                const ctx = canvas.getContext('2d');
+                if (ctx && videoRef.current) {
+                  // video intrinsic (natural) size
+                  const intrinsicW = videoRef.current.videoWidth || videoRef.current.width || 640;
+                  const intrinsicH = videoRef.current.videoHeight || videoRef.current.height || 480;
+                  // the displayed (CSS) size of the canvas
+                  const clientW = canvas.clientWidth || intrinsicW;
+                  const clientH = canvas.clientHeight || intrinsicH;
+                  const dpr = window.devicePixelRatio || 1;
+                  const targetW = Math.max(1, Math.round(clientW * dpr));
+                  const targetH = Math.max(1, Math.round(clientH * dpr));
+                  if (canvas.width !== targetW || canvas.height !== targetH) {
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                  }
+                  // Use a device-pixel-ratio aware transform so drawing uses client pixels
+                  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                  ctx.clearRect(0, 0, clientW, clientH);
+
+                  // Map a point from video intrinsic space -> canvas client space
+                  const mapX = (x: number) => (x / intrinsicW) * clientW;
+                  const mapY = (y: number) => (y / intrinsicH) * clientH;
+                  const mapLen = (l: number) => (l / intrinsicW) * clientW; // approximate scale for radii
+
+                  // Draw shoulder radius circles (orange)
+                  ctx.lineWidth = 1;
+                  ctx.strokeStyle = 'rgba(255,165,0,0.1)';
+                  ctx.beginPath();
+                  ctx.arc(mapX(leftShoulder.x), mapY(leftShoulder.y), mapLen(shoulderRadius), 0, Math.PI * 2);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.arc(mapX(rightShoulder.x), mapY(rightShoulder.y), mapLen(shoulderRadius), 0, Math.PI * 2);
+                  ctx.stroke();
+
+                  // Draw narrow inner circle (dashed, green) — thicker for visibility
+                  ctx.setLineDash([6, 4]);
+                  // preserve previous line width and increase for the dashed circle
+                  const prevLineWidth = ctx.lineWidth;
+                  ctx.lineWidth = Math.max(6, prevLineWidth * 1.8); // thicker (DPR-aware since transform is set)
+                  ctx.strokeStyle = 'rgba(76,175,80,0.95)';
+                  ctx.beginPath();
+                  ctx.arc(mapX(leftShoulder.x), mapY(leftShoulder.y), mapLen(shoulderRadius * NARROW_RADIUS_FRAC), 0, Math.PI * 2);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.arc(mapX(rightShoulder.x), mapY(rightShoulder.y), mapLen(shoulderRadius * NARROW_RADIUS_FRAC), 0, Math.PI * 2);
+                  ctx.stroke();
+                  ctx.setLineDash([]);
+                  // restore previous line width
+                  ctx.lineWidth = prevLineWidth;
+
+                  // Draw wrists
+                  ctx.fillStyle = 'rgba(33,150,243,0.95)';
+                  ctx.beginPath(); ctx.arc(mapX(leftWrist.x), mapY(leftWrist.y), 6, 0, Math.PI * 2); ctx.fill();
+                  ctx.beginPath(); ctx.arc(mapX(rightWrist.x), mapY(rightWrist.y), 6, 0, Math.PI * 2); ctx.fill();
+
+                  // Draw line between wrists
+                  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+                  ctx.beginPath(); ctx.moveTo(mapX(leftWrist.x), mapY(leftWrist.y)); ctx.lineTo(mapX(rightWrist.x), mapY(rightWrist.y)); ctx.stroke();
+                }
+              }
             }
           }
         }
