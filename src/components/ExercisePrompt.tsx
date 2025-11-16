@@ -1,7 +1,10 @@
 import React, { useRef, useEffect } from 'react';
+import styles from './ExercisePrompt.module.css';
 import WebcamFeed from './WebcamFeed';
 import ProgressBar from './ProgressBar';
 import { usePoseDetection } from '../hooks/usePoseDetection';
+import InfoTooltip from './InfoTooltip';
+import exerciseInstructions from '../utils/exerciseInstructions';
 
 interface ExercisePromptProps {
   repsTarget: number;
@@ -36,17 +39,21 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
   return (
     <div className="exercise-prompt">
       <h2>Time to Move!</h2>
-      <p>Do {repsTarget} {
-        exercise === 'squats' ? 'squats' :
-        exercise === 'jumping_jacks' ? 'jumping jacks' :
-        exercise === 'shoulder_presses' ? 'shoulder presses' :
-        exercise === 'lateral_raise' ? 'lateral raises' :
-        exercise === 'knee_raises' ? 'knee raises' :
-        exercise === 'bicep_curls' ? 'bicep curls' :
-        exercise === 'band_pull_aparts' ? 'band pull-aparts' : 'reps'
-      }</p>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span>Do {repsTarget}</span>
+        <strong style={{ textTransform: 'none' }}>{
+          exercise === 'squats' ? 'squats' :
+          exercise === 'jumping_jacks' ? 'jumping jacks' :
+          exercise === 'shoulder_presses' ? 'shoulder presses' :
+          exercise === 'lateral_raise' ? 'lateral raises' :
+          exercise === 'knee_raises' ? 'knee raises' :
+          exercise === 'bicep_curls' ? 'bicep curls' :
+          exercise === 'band_pull_aparts' ? 'band pull-aparts' : 'reps'
+        }</strong>
+        <InfoTooltip content={exerciseInstructions[exercise] ?? 'Perform the exercise with controlled motion and proper form.'} />
+      </p>
+      <div className={styles.toggleRow}>
+        <label className={styles.toggleLabel}>
           Show Form Overlay
           <span className="toggle-switch">
             <input
@@ -71,11 +78,11 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
       <div className="rep-counter">
         Reps: {repsCount} / {repsTarget}
         <ProgressBar value={repsCount} max={repsTarget} />
-          </div>
+      </div>
           {/* Notes beneath the progress bar: inline editable textarea (max 300 chars) */}
           {typeof notes !== 'undefined' && (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
-              <label style={{ fontSize: 13, color: '#333' }}>Notes</label>
+            <div className={styles.notesContainer}>
+              <label className={styles.notesLabel}>Notes</label>
               <textarea
                 value={notes}
                 onChange={e => {
@@ -87,15 +94,15 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
                 rows={3}
                 className="notes-textarea"
               />
-              <div style={{ fontSize: 12, color: '#666', textAlign: 'right' }}>{(notes || '').length}/300</div>
+              <div className={styles.notesCounter}>{(notes || '').length}/300</div>
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 16 }}>
-        <button onClick={onDone} disabled={repsCount < repsTarget}>
+      <div className={styles.buttonsRow}>
+        <button className={styles.doneButton} onClick={onDone} disabled={repsCount < repsTarget}>
           Done
         </button>
-        <button onClick={onCancel} style={{ background: '#e0e7ef', color: '#3a5ba0' }}>
+        <button className={styles.cancelButton} onClick={onCancel}>
           Cancel
         </button>
       </div>

@@ -1,0 +1,37 @@
+.tooltipRoot {
+  position: relative;
+  display: inline-block;
+}
+
+.infoButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #eef3ff;
+  color: #2b5bb0;
+  text-align: center;
+  line-height: 18px;
+  font-size: 12px;
+  border: 1px solid rgba(43,91,176,0.12);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tooltipPopup {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(100% + 8px);
+  min-width: 220px;
+  max-width: 360px;
+  background: rgba(20,20,30,0.95);
+  color: white;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+  z-index: 40;
+}
