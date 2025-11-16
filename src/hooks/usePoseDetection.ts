@@ -11,6 +11,63 @@ interface UsePoseDetectionProps {
 }
 
 export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, exercise, overlayRef }: UsePoseDetectionProps) {
+  // Simple One Euro filter implementation to reduce jitter in keypoint positions.
+  // Based on "The One Euro Filter: A Simple Speed-based Low-pass Filter for
+  // Noisy Input in Interactive Systems" by Géry Casiez et al. This is a
+  // lightweight JS/TS port suitable for smoothing 2D keypoint coordinates.
+  class OneEuroFilter {
+    private freq: number; // sampling frequency (Hz)
+    private minCutoff: number;
+    private beta: number;
+    private dCutoff: number;
+    private lastTime: number | null = null;
+    private xPrev: number | null = null;
+    private dxPrev: number | null = null;
+
+    constructor(freq = 30, minCutoff = 1.0, beta = 0.0, dCutoff = 1.0) {
+      this.freq = freq;
+      this.minCutoff = minCutoff;
+      this.beta = beta;
+      this.dCutoff = dCutoff;
+    }
+
+    // exponential smoothing helper
+    private alpha(cutoff: number) {
+      const tau = 1.0 / (2 * Math.PI * cutoff);
+      const te = 1.0 / Math.max(1e-6, this.freq);
+      return 1.0 / (1.0 + tau / te);
+    }
+
+    // call with (value, timestampMs)
+    filter(value: number, timestampMs?: number) {
+      const t = timestampMs != null ? timestampMs / 1000 : (this.lastTime != null ? this.lastTime + 1.0 / this.freq : 0);
+      if (this.lastTime == null) {
+        this.lastTime = t;
+      } else if (t !== this.lastTime) {
+        this.freq = 1.0 / Math.max(1e-6, t - this.lastTime);
+        this.lastTime = t;
+      }
+
+      if (this.xPrev == null) {
+        this.xPrev = value;
+        this.dxPrev = 0;
+        return value;
+      }
+
+      const dx = (value - this.xPrev) * this.freq;
+      const edx = this.dxPrev == null ? dx : this.dxPrev + this.alpha(this.dCutoff) * (dx - this.dxPrev);
+      const cutoff = this.minCutoff + this.beta * Math.abs(edx);
+      const a = this.alpha(cutoff);
+      const x = this.xPrev + a * (value - this.xPrev);
+
+      this.xPrev = x;
+      this.dxPrev = edx;
+      return x;
+    }
+  }
+
+  // Map of per-keypoint filters: `${name}.x` and `${name}.y` will be keys
+  const kpFilterMapRef = useRef<Map<string, { x: OneEuroFilter; y: OneEuroFilter }>>(new Map());
   const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
   const lastArmUpRef = useRef(false);
   // Track squat-specific baseline measurements captured when the exercise starts
@@ -151,8 +208,23 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
 
         const poses = await detectorRef.current.estimatePoses(videoRef.current);
         if (poses && poses[0]) {
-          const keypoints = poses[0].keypoints;
-          const now = Date.now();
+            const keypoints = poses[0].keypoints;
+            const now = Date.now();
+
+            // Apply smoothing to each detected keypoint using per-keypoint OneEuro filters.
+            // We produce a parallel array `smoothedKeypoints` with the same shape.
+            const smoothedKeypoints = (keypoints as any).map((kp: any) => {
+              // Initialize filters for this keypoint name if needed
+              if (!kpFilterMapRef.current.has(kp.name)) {
+                // Default parameters: assume ~30Hz input, mild smoothing
+                kpFilterMapRef.current.set(kp.name, { x: new OneEuroFilter(30, 1.0, 0.007, 1.0), y: new OneEuroFilter(30, 1.0, 0.007, 1.0) });
+              }
+              const f = kpFilterMapRef.current.get(kp.name)!;
+              const sx = f.x.filter(kp.x, now);
+              const sy = f.y.filter(kp.y, now);
+              return { ...kp, x: sx, y: sy };
+            });
+
 
             // Draw overlay if provided: show keypoints and squat baseline/threshold
             if (typeof overlayRef !== 'undefined' && overlayRef && overlayRef.current && videoRef.current) {
@@ -198,7 +270,7 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
                     }
                   };
 
-                  const kpByName = (name: string) => (keypoints as any).find((k: any) => k.name === name);
+                  const kpByName = (name: string) => (smoothedKeypoints as any).find((k: any) => k.name === name);
                   const leftShoulder = kpByName('left_shoulder');
                   const rightShoulder = kpByName('right_shoulder');
                   const leftHip = kpByName('left_hip');
@@ -328,12 +400,12 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
               }
             }
 
-          // helper: detect both wrists above respective shoulders
+          // helper: detect both wrists above respective shoulders (use smoothed points)
           const armsAboveShoulders = (() => {
-            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
-            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
-            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
-            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+            const leftWrist = smoothedKeypoints.find((k: any) => k.name === 'left_wrist');
+            const rightWrist = smoothedKeypoints.find((k: any) => k.name === 'right_wrist');
+            const leftShoulder = smoothedKeypoints.find((k: any) => k.name === 'left_shoulder');
+            const rightShoulder = smoothedKeypoints.find((k: any) => k.name === 'right_shoulder');
             return !!(leftWrist && rightWrist && leftShoulder && rightShoulder && leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y);
           })();
 
@@ -352,10 +424,10 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
             // (waist + 20% of torso height) relative to that baseline. Using
             // hips (not shoulders) avoids false positives when the user leans
             // the torso forward.
-            const leftHip = keypoints.find(k => k.name === 'left_hip');
-            const rightHip = keypoints.find(k => k.name === 'right_hip');
-            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
-            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+            const leftHip = smoothedKeypoints.find((k: any) => k.name === 'left_hip');
+            const rightHip = smoothedKeypoints.find((k: any) => k.name === 'right_hip');
+            const leftShoulder = smoothedKeypoints.find((k: any) => k.name === 'left_shoulder');
+            const rightShoulder = smoothedKeypoints.find((k: any) => k.name === 'right_shoulder');
             if (leftHip && rightHip && leftShoulder && rightShoulder) {
               const avgHipY = (leftHip.y + rightHip.y) / 2;
               const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
@@ -403,10 +475,10 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
             }
           } else if (exercise === 'knee_raises') {
             // Detect single knee raised to hip level or above (one knee at a time). Count when a knee goes up.
-            const leftKnee = keypoints.find(k => k.name === 'left_knee');
-            const rightKnee = keypoints.find(k => k.name === 'right_knee');
-            const leftHip = keypoints.find(k => k.name === 'left_hip');
-            const rightHip = keypoints.find(k => k.name === 'right_hip');
+            const leftKnee = smoothedKeypoints.find((k: any) => k.name === 'left_knee');
+            const rightKnee = smoothedKeypoints.find((k: any) => k.name === 'right_knee');
+            const leftHip = smoothedKeypoints.find((k: any) => k.name === 'left_hip');
+            const rightHip = smoothedKeypoints.find((k: any) => k.name === 'right_hip');
             if (leftKnee && rightKnee && leftHip && rightHip) {
               const leftKneeUp = leftKnee.y < leftHip.y;
               const rightKneeUp = rightKnee.y < rightHip.y;
@@ -421,10 +493,10 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
           } else if (exercise === 'bicep_curls') {
             // Bicep curls: detect curls per arm independently. We count a rep when
             // an individual wrist goes from above the elbow (curl up) back down below the elbow.
-            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
-            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
-            const leftElbow = keypoints.find(k => k.name === 'left_elbow');
-            const rightElbow = keypoints.find(k => k.name === 'right_elbow');
+            const leftWrist = smoothedKeypoints.find((k: any) => k.name === 'left_wrist');
+            const rightWrist = smoothedKeypoints.find((k: any) => k.name === 'right_wrist');
+            const leftElbow = smoothedKeypoints.find((k: any) => k.name === 'left_elbow');
+            const rightElbow = smoothedKeypoints.find((k: any) => k.name === 'right_elbow');
             if (leftWrist && leftElbow) {
               const leftCurled = leftWrist.y < leftElbow.y;
               if (leftCurled && !lastLeftCurlUpRef.current) {
@@ -452,12 +524,12 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
             // then move them outward to the sides. We'll measure horizontal wrist separation
             // relative to shoulder width. Count when the user returns from the wide position
             // back to the starting (narrow) position after a successful outward movement.
-            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
-            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
-            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
-            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
-            const leftHip = keypoints.find(k => k.name === 'left_hip');
-            const rightHip = keypoints.find(k => k.name === 'right_hip');
+            const leftWrist = smoothedKeypoints.find((k: any) => k.name === 'left_wrist');
+            const rightWrist = smoothedKeypoints.find((k: any) => k.name === 'right_wrist');
+            const leftShoulder = smoothedKeypoints.find((k: any) => k.name === 'left_shoulder');
+            const rightShoulder = smoothedKeypoints.find((k: any) => k.name === 'right_shoulder');
+            const leftHip = smoothedKeypoints.find((k: any) => k.name === 'left_hip');
+            const rightHip = smoothedKeypoints.find((k: any) => k.name === 'right_hip');
             if (leftWrist && rightWrist && leftShoulder && rightShoulder && leftHip && rightHip) {
               const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
               const wristDistance = Math.abs(leftWrist.x - rightWrist.x);
