@@ -94,6 +94,8 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
               { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
             );
           }
+
+
         } catch (err) {
           // MoveNet failed to load (e.g. 403 from tfhub). Attempt a graceful
           // fallback to BlazePose using the MediaPipe runtime.
@@ -151,6 +153,180 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
         if (poses && poses[0]) {
           const keypoints = poses[0].keypoints;
           const now = Date.now();
+
+            // Draw overlay if provided: show keypoints and squat baseline/threshold
+            if (typeof overlayRef !== 'undefined' && overlayRef && overlayRef.current && videoRef.current) {
+              try {
+                const canvas = overlayRef.current;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  const intrinsicW = videoRef.current.videoWidth || videoRef.current.width || 640;
+                  const intrinsicH = videoRef.current.videoHeight || videoRef.current.height || 480;
+                  const clientW = canvas.clientWidth || intrinsicW;
+                  const clientH = canvas.clientHeight || intrinsicH;
+                  const dpr = window.devicePixelRatio || 1;
+                  const targetW = Math.max(1, Math.round(clientW * dpr));
+                  const targetH = Math.max(1, Math.round(clientH * dpr));
+                  if (canvas.width !== targetW || canvas.height !== targetH) {
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                  }
+                  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                  ctx.clearRect(0, 0, clientW, clientH);
+
+                  const mapX = (x: number) => (x / intrinsicW) * clientW;
+                  const mapY = (y: number) => (y / intrinsicH) * clientH;
+
+                  const drawCircle = (x: number, y: number, r: number, fill: string) => {
+                    ctx.beginPath(); ctx.arc(mapX(x), mapY(y), r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill();
+                  };
+
+                  // Draw text labels in a way that remains readable even though
+                  // the canvas element is visually mirrored with CSS
+                  const drawLabel = (text: string, x: number, y: number, color = 'white') => {
+                    try {
+                      ctx.save();
+                      // Pre-flip drawing so the CSS scaleX(-1) on the canvas
+                      // double-flips the text and makes it readable.
+                      ctx.translate(clientW, 0);
+                      ctx.scale(-1, 1);
+                      ctx.fillStyle = color;
+                      ctx.font = '12px sans-serif';
+                      ctx.fillText(text, x, y);
+                    } finally {
+                      ctx.restore();
+                    }
+                  };
+
+                  const kpByName = (name: string) => (keypoints as any).find((k: any) => k.name === name);
+                  const leftShoulder = kpByName('left_shoulder');
+                  const rightShoulder = kpByName('right_shoulder');
+                  const leftHip = kpByName('left_hip');
+                  const rightHip = kpByName('right_hip');
+                  const leftWrist = kpByName('left_wrist');
+                  const rightWrist = kpByName('right_wrist');
+                  const leftKnee = kpByName('left_knee');
+                  const rightKnee = kpByName('right_knee');
+                  const leftElbow = kpByName('left_elbow');
+                  const rightElbow = kpByName('right_elbow');
+
+                  if (leftShoulder) drawCircle(leftShoulder.x, leftShoulder.y, 5, 'rgba(255,165,0,0.95)');
+                  if (rightShoulder) drawCircle(rightShoulder.x, rightShoulder.y, 5, 'rgba(255,165,0,0.95)');
+                  if (leftHip) drawCircle(leftHip.x, leftHip.y, 5, 'rgba(76,175,80,0.95)');
+                  if (rightHip) drawCircle(rightHip.x, rightHip.y, 5, 'rgba(76,175,80,0.95)');
+                  if (leftWrist) drawCircle(leftWrist.x, leftWrist.y, 4, 'rgba(33,150,243,0.95)');
+                  if (rightWrist) drawCircle(rightWrist.x, rightWrist.y, 4, 'rgba(33,150,243,0.95)');
+                  if (leftKnee) drawCircle(leftKnee.x, leftKnee.y, 3, 'rgba(200,200,200,0.95)');
+                  if (rightKnee) drawCircle(rightKnee.x, rightKnee.y, 3, 'rgba(200,200,200,0.95)');
+
+                  // Visual guidance for shoulder-presses, lateral-raises and jumping-jacks
+                  // Show shoulder line, a target line above the head (arms-up), and
+                  // color-coded wrist markers (green when above shoulder, red otherwise).
+                  if (exercise === 'shoulder_presses' || exercise === 'lateral_raise' || exercise === 'jumping_jacks') {
+                    if (leftShoulder && rightShoulder && leftHip && rightHip) {
+                      const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+                      const avgHipY = (leftHip.y + rightHip.y) / 2;
+                      const torsoLen = Math.max(1, Math.abs(avgShoulderY - avgHipY));
+
+                      // Target line a bit above the shoulders (fraction of torso length).
+                      // Lateral raises often target roughly shoulder height; for simplicity
+                      // use slightly different targets per exercise.
+                      const targetOffsetFrac = exercise === 'lateral_raise' ? 0.0 : 0.35; // lateral: target at shoulder, others: above
+                      const targetY = avgShoulderY - targetOffsetFrac * torsoLen;
+
+                      // Draw shoulder baseline (solid orange)
+                      ctx.strokeStyle = 'rgba(255,165,0,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([]);
+                      ctx.beginPath(); ctx.moveTo(0, mapY(avgShoulderY)); ctx.lineTo(clientW, mapY(avgShoulderY)); ctx.stroke();
+                      drawLabel('shoulder', 6, Math.max(12, mapY(avgShoulderY) - 6), 'rgba(255,165,0,0.9)');
+
+                      // Draw target (dashed green)
+                      ctx.strokeStyle = 'rgba(76,175,80,0.95)'; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
+                      ctx.beginPath(); ctx.moveTo(0, mapY(targetY)); ctx.lineTo(clientW, mapY(targetY)); ctx.stroke();
+                      ctx.setLineDash([]);
+                      drawLabel(exercise === 'lateral_raise' ? 'target (arm level)' : 'target (arms up)', 6, Math.max(12, mapY(targetY) - 6), 'rgba(76,175,80,0.95)');
+
+                      // Color wrists by whether they meet the 'above shoulder' condition
+                      const leftWristAbove = !!(leftWrist && leftShoulder && leftWrist.y < leftShoulder.y);
+                      const rightWristAbove = !!(rightWrist && rightShoulder && rightWrist.y < rightShoulder.y);
+                      const leftColor = leftWristAbove ? 'rgba(76,175,80,0.95)' : 'rgba(244,67,54,0.95)';
+                      const rightColor = rightWristAbove ? 'rgba(76,175,80,0.95)' : 'rgba(244,67,54,0.95)';
+
+                      if (leftWrist) drawCircle(leftWrist.x, leftWrist.y, 6, leftColor);
+                      if (rightWrist) drawCircle(rightWrist.x, rightWrist.y, 6, rightColor);
+
+                      // Connect shoulders to target positions for visual guidance
+                      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1;
+                      ctx.beginPath(); ctx.moveTo(mapX(leftShoulder.x), mapY(leftShoulder.y)); ctx.lineTo(mapX(leftShoulder.x), mapY(targetY)); ctx.stroke();
+                      ctx.beginPath(); ctx.moveTo(mapX(rightShoulder.x), mapY(rightShoulder.y)); ctx.lineTo(mapX(rightShoulder.x), mapY(targetY)); ctx.stroke();
+                    }
+                  }
+
+                  if (exercise === 'squats' && leftHip && rightHip && leftShoulder && rightShoulder) {
+                    const avgHipY = (leftHip.y + rightHip.y) / 2;
+                    const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+                    const baselineShoulderY = squatBaselineShoulderYRef.current ?? avgShoulderY;
+                    const baselineTorso = (squatBaselineTorsoLenRef.current ?? Math.abs(avgShoulderY - avgHipY)) || 1;
+                    const waistY = baselineShoulderY + 0.5 * baselineTorso;
+                    const squatThresholdHipY = waistY + 0.2 * baselineTorso;
+
+                    const drawH = (y: number, color: string, label?: string, dash?: boolean) => {
+                      ctx.strokeStyle = color; ctx.lineWidth = 2; if (dash) ctx.setLineDash([6,4]); else ctx.setLineDash([]);
+                      ctx.beginPath(); ctx.moveTo(0, mapY(y)); ctx.lineTo(clientW, mapY(y)); ctx.stroke(); ctx.setLineDash([]);
+                      if (label) {
+                        drawLabel(label, 6, Math.max(12, mapY(y) - 6), color);
+                      }
+                    };
+
+                    drawH(baselineShoulderY, 'rgba(255,165,0,0.9)', 'baseline shoulder', true);
+                    drawH(waistY, 'rgba(255,206,84,0.9)', 'waist', true);
+                    drawH(squatThresholdHipY, 'rgba(244,67,54,0.9)', 'squat threshold', false);
+
+                    const isSquattingNow = avgHipY >= squatThresholdHipY;
+                    ctx.beginPath(); ctx.arc(mapX((leftHip.x + rightHip.x)/2), mapY(avgHipY), 8, 0, Math.PI * 2);
+                    ctx.fillStyle = isSquattingNow ? 'rgba(244,67,54,0.6)' : 'rgba(33,150,243,0.5)'; ctx.fill();
+                  }
+
+                  // Knee raise overlay: draw hip level and mark knee when raised
+                  if (exercise === 'knee_raises' && leftHip && rightHip) {
+                    const avgHipY = (leftHip.y + rightHip.y) / 2;
+                    // hip line (dashed yellow)
+                    ctx.strokeStyle = 'rgba(255,206,84,0.95)'; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
+                    ctx.beginPath(); ctx.moveTo(0, mapY(avgHipY)); ctx.lineTo(clientW, mapY(avgHipY)); ctx.stroke(); ctx.setLineDash([]);
+                    drawLabel('hip level', 6, Math.max(12, mapY(avgHipY) - 6), 'rgba(255,206,84,0.95)');
+                    // mark knees: green if above hip, orange otherwise
+                    if (leftKnee) drawCircle(leftKnee.x, leftKnee.y, 6, leftKnee.y < leftHip.y ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
+                    if (rightKnee) drawCircle(rightKnee.x, rightKnee.y, 6, rightKnee.y < rightHip.y ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
+                  }
+
+                  // Bicep curl overlay: draw elbow baseline and color wrists by curl state
+                  if (exercise === 'bicep_curls' && (leftElbow || rightElbow) && (leftWrist || rightWrist)) {
+                    // draw elbow horizontal lines
+                    if (leftElbow) {
+                      ctx.strokeStyle = 'rgba(33,150,243,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([]);
+                      ctx.beginPath(); ctx.moveTo(0, mapY(leftElbow.y)); ctx.lineTo(clientW / 2, mapY(leftElbow.y)); ctx.stroke();
+                      drawLabel('left elbow', 6, Math.max(12, mapY(leftElbow.y) - 6), 'rgba(33,150,243,0.9)');
+                    }
+                    if (rightElbow) {
+                      ctx.strokeStyle = 'rgba(33,150,243,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([]);
+                      ctx.beginPath(); ctx.moveTo(clientW / 2, mapY(rightElbow.y)); ctx.lineTo(clientW, mapY(rightElbow.y)); ctx.stroke();
+                      drawLabel('right elbow', clientW / 2 + 6, Math.max(12, mapY(rightElbow.y) - 6), 'rgba(33,150,243,0.9)');
+                    }
+
+                    // color wrists: green when wrist above elbow (curl), orange otherwise
+                    if (leftWrist && leftElbow) {
+                      const curled = leftWrist.y < leftElbow.y;
+                      drawCircle(leftWrist.x, leftWrist.y, 6, curled ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
+                    }
+                    if (rightWrist && rightElbow) {
+                      const curled = rightWrist.y < rightElbow.y;
+                      drawCircle(rightWrist.x, rightWrist.y, 6, curled ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
+                    }
+                  }
+                }
+              } catch (e) {
+                // don't let overlay drawing break detection
+              }
+            }
 
           // helper: detect both wrists above respective shoulders
           const armsAboveShoulders = (() => {
