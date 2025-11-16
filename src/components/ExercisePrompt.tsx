@@ -11,9 +11,11 @@ interface ExercisePromptProps {
   exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses'
   onCancel?: () => void;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
+  notes?: string;
+  setNote?: (note: string) => void;
 }
 
-const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, setRepsCount, onDone, exercise, onCancel, videoRef }) => {
+const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, setRepsCount, onDone, exercise, onCancel, videoRef, notes, setNote }) => {
   const innerRef = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
   const usedRef = videoRef || innerRef;
   const canvasRef = useRef<HTMLCanvasElement>(null) as React.RefObject<HTMLCanvasElement>;
@@ -69,8 +71,27 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
       <div className="rep-counter">
         Reps: {repsCount} / {repsTarget}
         <ProgressBar value={repsCount} max={repsTarget} />
-      </div>
-      <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 16 }}>
+          </div>
+          {/* Notes beneath the progress bar: inline editable textarea (max 300 chars) */}
+          {typeof notes !== 'undefined' && (
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch' }}>
+              <label style={{ fontSize: 13, color: '#333' }}>Notes</label>
+              <textarea
+                value={notes}
+                onChange={e => {
+                  const v = e.target.value.slice(0, 300);
+                  if (setNote) setNote(v);
+                }}
+                placeholder="Add notes (e.g. 10lb dumbbells, blue resistance band)"
+                maxLength={300}
+                rows={3}
+                className="notes-textarea"
+              />
+              <div style={{ fontSize: 12, color: '#666', textAlign: 'right' }}>{(notes || '').length}/300</div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 16 }}>
         <button onClick={onDone} disabled={repsCount < repsTarget}>
           Done
         </button>

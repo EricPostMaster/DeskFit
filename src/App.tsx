@@ -89,6 +89,7 @@ const LS_KEYS = {
   timer: 'deskfit-default-timer',
   reps: 'deskfit-default-reps',
   goal: 'deskfit-daily-goal',
+  notes: 'deskfit-exercise-notes',
   repsHistory: 'deskfit-reps-history',
   tasksHistory: 'deskfit-tasks-history',
 };
@@ -250,18 +251,24 @@ function App() {
   const [prefsTimer, setPrefsTimer] = useState(timer);
   const [prefsReps, setPrefsReps] = useState({ ...defaultReps });
   const [prefsGoal, setPrefsGoal] = useState({ ...dailyGoal });
+  const [prefsNotes, setPrefsNotes] = useState<Record<string, string>>(() => loadLS<Record<string, string>>(LS_KEYS.notes, {}));
+
+  // Save notes to localStorage when prefsNotes changes
+  useEffect(() => { saveLS(LS_KEYS.notes, prefsNotes); }, [prefsNotes]);
 
   // Open preferences and sync form state
   const openPrefs = () => {
     setPrefsTimer(timer);
     setPrefsReps({ ...defaultReps });
     setPrefsGoal({ ...dailyGoal });
+    setPrefsNotes({ ...prefsNotes });
     setShowPrefs(true);
   };
   // Save preferences
   const savePrefs = () => {
     setTimer(prefsTimer);
     setDefaultReps(prefsReps);
+    setPrefsNotes(prefsNotes);
     setDailyGoal(prefsGoal);
     setShowPrefs(false);
   };
@@ -652,6 +659,8 @@ function App() {
         prefsGoal={prefsGoal}
         setPrefsGoal={setPrefsGoal}
         savePrefs={savePrefs}
+        prefsNotes={prefsNotes}
+        setPrefsNotes={setPrefsNotes}
         toProperCase={toProperCase}
         DEFAULT_REPS={DEFAULT_REPS}
       />
@@ -665,6 +674,8 @@ function App() {
             onDone={handleDone}
             exercise={selectedExercise}
             videoRef={sharedVideoRef}
+            notes={prefsNotes[selectedExercise] || ''}
+            setNote={(val: string) => setPrefsNotes(n => ({ ...n, [selectedExercise]: val }))}
             onCancel={() => {
               setShowPrompt(false);
               setRepsCount(0);
