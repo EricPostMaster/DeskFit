@@ -13,6 +13,17 @@ interface UsePoseDetectionProps {
 export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, exercise, overlayRef }: UsePoseDetectionProps) {
   const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
   const lastArmUpRef = useRef(false);
+  // Track squat-specific baseline measurements captured when the exercise starts
+  const squatBaselineCapturedRef = useRef(false);
+  const squatBaselineShoulderYRef = useRef<number | null>(null);
+  const squatBaselineTorsoLenRef = useRef<number | null>(null);
+  // Rolling buffer to collect recent torso lengths & shoulder positions so we
+  // can capture a baseline only when the user appears to be standing upright
+  // (i.e., torso length is near the maximum observed in the short window).
+  const squatRecentTorsoLensRef = useRef<number[]>([]);
+  const SQUAT_BASELINE_WINDOW = 10; // number of frames to consider
+  const SQUAT_BASELINE_MIN_REL_MAX = 0.92; // require torso >= 92% of window max
+  const SQUAT_BASELINE_MAX_STDDEV = 6; // px-ish stability threshold
   // For per-arm bicep curl detection
   const lastLeftCurlUpRef = useRef(false);
   const lastRightCurlUpRef = useRef(false);
@@ -159,7 +170,12 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
             }
             lastArmUpRef.current = armsAboveShoulders;
           } else if (exercise === 'squats') {
-            // Improved squat detection: average hip at least 0.25x torso length below average shoulder
+            // Squat detection (revised): use a short "baseline" captured at the
+            // start of the exercise (first good frame) to compute waist/torso
+            // measurements. Count a squat when the average hips drop below
+            // (waist + 20% of torso height) relative to that baseline. Using
+            // hips (not shoulders) avoids false positives when the user leans
+            // the torso forward.
             const leftHip = keypoints.find(k => k.name === 'left_hip');
             const rightHip = keypoints.find(k => k.name === 'right_hip');
             const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
@@ -167,9 +183,41 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
             if (leftHip && rightHip && leftShoulder && rightShoulder) {
               const avgHipY = (leftHip.y + rightHip.y) / 2;
               const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
-              const torsoLength = Math.abs(avgShoulderY - avgHipY);
-              const squatThreshold = avgShoulderY + 0.25 * torsoLength;
-              const isSquatting = avgHipY > squatThreshold;
+
+              // Maintain rolling window of torso lengths
+              const currentTorsoLen = Math.abs(avgShoulderY - avgHipY) || 1;
+              const arr = squatRecentTorsoLensRef.current;
+              arr.push(currentTorsoLen);
+              if (arr.length > SQUAT_BASELINE_WINDOW) arr.shift();
+
+              // Compute simple statistics for the window (max and stddev)
+              const windowMax = Math.max(...arr);
+              const mean = arr.reduce((s, v) => s + v, 0) / arr.length;
+              const variance = arr.reduce((s, v) => s + (v - mean) * (v - mean), 0) / arr.length;
+              const stddev = Math.sqrt(variance);
+
+              // Capture baseline only when we haven't captured one yet and the
+              // recent torso lengths are stable (low stddev) and current torso
+              // is near the window's maximum (user is likely standing tall).
+              if (!squatBaselineCapturedRef.current && arr.length >= Math.min(SQUAT_BASELINE_WINDOW, 4)) {
+                const relToMax = currentTorsoLen / (windowMax || 1);
+                if (relToMax >= SQUAT_BASELINE_MIN_REL_MAX && stddev <= SQUAT_BASELINE_MAX_STDDEV) {
+                  squatBaselineShoulderYRef.current = avgShoulderY;
+                  squatBaselineTorsoLenRef.current = currentTorsoLen;
+                  squatBaselineCapturedRef.current = true;
+                }
+              }
+
+              const baselineShoulderY = squatBaselineShoulderYRef.current ?? avgShoulderY;
+              const baselineTorso = (squatBaselineTorsoLenRef.current ?? currentTorsoLen) || 1;
+
+              // Approximate waist as halfway between shoulder and hip in the
+              // baseline pose. Require hips to drop to waist + 20% torso.
+              const waistY = baselineShoulderY + 0.5 * baselineTorso;
+              const squatThresholdHipY = waistY + 0.2 * baselineTorso;
+
+              const isSquatting = avgHipY >= squatThresholdHipY;
+
               if (isSquatting && !lastArmUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
                 repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
                 setRepsCount(repsCountRef.current);
