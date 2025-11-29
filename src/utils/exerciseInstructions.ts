@@ -7,7 +7,9 @@ const exerciseInstructions: Record<string, string> = {
   knee_raises: 'Lift one knee toward hip level, lower it back down, and alternate legs with control.',
   bicep_curls: 'Curl the weight by bringing the wrist toward the shoulder, then lower slowly to full extension.',
   band_pull_aparts: 'Hold band in front at chest height, pull hands outward until arms are wide, then return slowly.',
-  triceps_extensions: 'Hold weight with both hands above head, bend elbows to lower weight behind head, then extend arms back to start position.'
+  triceps_extensions: 'Hold weight with both hands above head, bend elbows to lower weight behind head, then extend arms back to start position.',
+  low_to_high_chest_flies: 'Anchor band near floor (or stand on it). Start with arms low, raise them in an arc from hip level to upper chest height, then lower with control.',
+  svend_chest_press: 'Hold weights or plates squeezed together in front of chest. Turn sideways to camera, press arms forward, then bring back slowly while maintaining squeeze.'
 };
 
 export default exerciseInstructions;

@@ -49,10 +49,26 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
           exercise === 'knee_raises' ? 'knee raises' :
           exercise === 'bicep_curls' ? 'bicep curls' :
           exercise === 'band_pull_aparts' ? 'band pull-aparts' :
-          exercise === 'triceps_extensions' ? 'triceps extensions' : 'reps'
+          exercise === 'triceps_extensions' ? 'triceps extensions' :
+          exercise === 'low_to_high_chest_flies' ? 'low-to-high chest flies' :
+          exercise === 'svend_chest_press' ? 'Svend chest presses' : 'reps'
         }</strong>
         <InfoTooltip content={exerciseInstructions[exercise] ?? 'Perform the exercise with controlled motion and proper form.'} />
       </p>
+      {exercise === 'svend_chest_press' && (
+        <div style={{
+          background: '#e3f2fd',
+          color: '#1976d2',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          fontSize: '0.9rem',
+          marginBottom: '12px',
+          border: '1px solid #bbdefb',
+          textAlign: 'center'
+        }}>
+          💡 Turn 90 degrees left or right to accurately track this exercise
+        </div>
+      )}
       <div className={styles.toggleRow}>
         <label className={styles.toggleLabel}>
           Show Form Overlay
