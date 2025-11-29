@@ -89,13 +89,14 @@ const LS_KEYS = {
   timer: 'deskfit-default-timer',
   reps: 'deskfit-default-reps',
   goal: 'deskfit-daily-goal',
+  notes: 'deskfit-exercise-notes',
   repsHistory: 'deskfit-reps-history',
   tasksHistory: 'deskfit-tasks-history',
 };
 
 // --- Default Values ---
 const DEFAULT_TIMER = 60;
-const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12, bicep_curls: 12, band_pull_aparts: 12, low_to_high_chest_flies: 12, svend_chest_press: 12 };
+const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12, bicep_curls: 12, band_pull_aparts: 12, triceps_extensions: 12, low_to_high_chest_flies: 12, svend_chest_press: 12 };
 const DEFAULT_GOAL = { Mon: 5, Tue: 5, Wed: 5, Thu: 5, Fri: 5, Sat: 2, Sun: 2 };
 
 // --- Helper Functions ---
@@ -139,6 +140,7 @@ function populateSampleHistory() {
         shoulder_presses: Math.floor(Math.random() * 30),
         lateral_raise: Math.floor(Math.random() * 30),
         knee_raises: Math.floor(Math.random() * 30),
+        triceps_extensions: Math.floor(Math.random() * 30),
       };
       tasksHistory[dateStr] = Math.floor(Math.random() * 7);
     }
@@ -250,18 +252,24 @@ function App() {
   const [prefsTimer, setPrefsTimer] = useState(timer);
   const [prefsReps, setPrefsReps] = useState({ ...defaultReps });
   const [prefsGoal, setPrefsGoal] = useState({ ...dailyGoal });
+  const [prefsNotes, setPrefsNotes] = useState<Record<string, string>>(() => loadLS<Record<string, string>>(LS_KEYS.notes, {}));
+
+  // Save notes to localStorage when prefsNotes changes
+  useEffect(() => { saveLS(LS_KEYS.notes, prefsNotes); }, [prefsNotes]);
 
   // Open preferences and sync form state
   const openPrefs = () => {
     setPrefsTimer(timer);
     setPrefsReps({ ...defaultReps });
     setPrefsGoal({ ...dailyGoal });
+    setPrefsNotes({ ...prefsNotes });
     setShowPrefs(true);
   };
   // Save preferences
   const savePrefs = () => {
     setTimer(prefsTimer);
     setDefaultReps(prefsReps);
+    setPrefsNotes(prefsNotes);
     setDailyGoal(prefsGoal);
     setShowPrefs(false);
   };
@@ -570,6 +578,7 @@ function App() {
                 <option value="knee_raises">Knee Raises</option>
                 <option value="bicep_curls">Bicep Curls</option>
                 <option value="band_pull_aparts">Band Pull-aparts</option>
+                <option value="triceps_extensions">Triceps Extensions</option>
                 <option value="low_to_high_chest_flies">Low-to-High Chest Flies</option>
                 <option value="svend_chest_press">Svend Chest Press</option>
               </select>
@@ -604,7 +613,7 @@ function App() {
               marginBottom: '24px',
               textAlign: 'center'
             }}>
-              💡 Turn 45-90 degrees left or right to accurately track this exercise
+              💡 Turn 90 degrees left or right to accurately track this exercise
             </div>
           )}
         </>
@@ -671,6 +680,8 @@ function App() {
         prefsGoal={prefsGoal}
         setPrefsGoal={setPrefsGoal}
         savePrefs={savePrefs}
+        prefsNotes={prefsNotes}
+        setPrefsNotes={setPrefsNotes}
         toProperCase={toProperCase}
         DEFAULT_REPS={DEFAULT_REPS}
       />
@@ -684,6 +695,8 @@ function App() {
             onDone={handleDone}
             exercise={selectedExercise}
             videoRef={sharedVideoRef}
+            notes={prefsNotes[selectedExercise] || ''}
+            setNote={(val: string) => setPrefsNotes(n => ({ ...n, [selectedExercise]: val }))}
             onCancel={() => {
               setShowPrompt(false);
               setRepsCount(0);

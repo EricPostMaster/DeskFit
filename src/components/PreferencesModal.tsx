@@ -12,12 +12,15 @@ interface PreferencesModalProps {
   savePrefs: () => void;
   toProperCase: (s: string) => string;
   DEFAULT_REPS: Record<string, number>;
+  prefsNotes: Record<string, string>;
+  setPrefsNotes: (r: Record<string, string> | ((r: Record<string, string>) => Record<string, string>)) => void;
 }
 
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
 const PreferencesModal: React.FC<PreferencesModalProps> = ({
   open, onClose, prefsTimer, setPrefsTimer, prefsReps, setPrefsReps, prefsGoal, setPrefsGoal, savePrefs, toProperCase, DEFAULT_REPS
+  , prefsNotes, setPrefsNotes
 }) => {
   if (!open) return null;
   return (
@@ -57,6 +60,15 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({
                       onChange={e => setPrefsReps(r => ({ ...r, [ex]: Math.max(1, Math.min(50, Number(e.target.value))) }))}
                       style={{ width: 60 }}
                     />
+                    <div style={{ display: 'inline-block', marginLeft: 12, verticalAlign: 'middle' }}>
+                      <input
+                        type="text"
+                        placeholder="notes"
+                        value={prefsNotes[ex] || ''}
+                        onChange={e => setPrefsNotes(n => ({ ...n, [ex]: e.target.value }))}
+                        style={{ width: 180 }}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>

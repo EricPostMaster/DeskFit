@@ -1,0 +1,58 @@
+.exerciseLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px 0;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.toggleLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notesContainer {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.notesLabel {
+  font-size: 13px;
+  color: #333;
+}
+
+.notesCounter {
+  font-size: 12px;
+  color: #666;
+  text-align: right;
+}
+
+.buttonsRow {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.cancelButton {
+  background: #e0e7ef;
+  color: #3a5ba0;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.doneButton {
+  padding: 8px 12px;
+  border-radius: 4px;
+}
