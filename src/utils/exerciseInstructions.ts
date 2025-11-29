@@ -6,7 +6,8 @@ const exerciseInstructions: Record<string, string> = {
   lateral_raise: 'With slight bend in elbows, raise arms out to the sides to shoulder height, then lower slowly.',
   knee_raises: 'Lift one knee toward hip level, lower it back down, and alternate legs with control.',
   bicep_curls: 'Curl the weight by bringing the wrist toward the shoulder, then lower slowly to full extension.',
-  band_pull_aparts: 'Hold band in front at chest height, pull hands outward until arms are wide, then return slowly.'
+  band_pull_aparts: 'Hold band in front at chest height, pull hands outward until arms are wide, then return slowly.',
+  triceps_extensions: 'Hold weight with both hands above head, bend elbows to lower weight behind head, then extend arms back to start position.'
 };
 
 export default exerciseInstructions;

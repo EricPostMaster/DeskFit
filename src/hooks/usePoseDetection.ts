@@ -6,7 +6,7 @@ interface UsePoseDetectionProps {
   enabled: boolean;
   repsTarget: number;
   setRepsCount: (val: number) => void;
-  exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses' | 'lateral_raise' | 'knee_raises' | 'bicep_curls' | 'band_pull_aparts'
+  exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses' | 'lateral_raise' | 'knee_raises' | 'bicep_curls' | 'band_pull_aparts' | 'triceps_extensions'
   overlayRef?: React.RefObject<HTMLCanvasElement | null>;
 }
 
@@ -84,6 +84,9 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
   // For per-arm bicep curl detection
   const lastLeftCurlUpRef = useRef(false);
   const lastRightCurlUpRef = useRef(false);
+  // For per-arm triceps extension detection (wrist above elbow = extended)
+  const lastLeftTricepsExtendedRef = useRef(false);
+  const lastRightTricepsExtendedRef = useRef(false);
   // Track band pull-apart wide state (both arms moved outward)
   const bandWideRef = useRef(false);
   const lastRepTimeRef = useRef<number>(0);
@@ -405,6 +408,52 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
                       drawCircle(rightWrist.x, rightWrist.y, 6, curled ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
                     }
                   }
+
+                  // Triceps extension overlay: draw eye level, elbow positions, and color wrists by extension state
+                  if (exercise === 'triceps_extensions') {
+                    const leftEye = kpByName('left_eye');
+                    const rightEye = kpByName('right_eye');
+                    
+                    if (leftEye && rightEye) {
+                      const avgEyeY = (leftEye.y + rightEye.y) / 2;
+                      
+                      // Draw eye level line (dashed purple)
+                      ctx.strokeStyle = 'rgba(156,39,176,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
+                      ctx.beginPath(); ctx.moveTo(0, mapY(avgEyeY)); ctx.lineTo(clientW, mapY(avgEyeY)); ctx.stroke();
+                      ctx.setLineDash([]);
+                      drawLabel('eye level (elbow must be above)', 6, Math.max(12, mapY(avgEyeY) - 6), 'rgba(156,39,176,0.9)');
+                      
+                      // Draw elbow markers: green if above eye level, red if below
+                      if (leftElbow) {
+                        const elbowAboveEye = leftElbow.y < avgEyeY;
+                        drawCircle(leftElbow.x, leftElbow.y, 6, elbowAboveEye ? 'rgba(76,175,80,0.95)' : 'rgba(244,67,54,0.95)');
+                      }
+                      if (rightElbow) {
+                        const elbowAboveEye = rightElbow.y < avgEyeY;
+                        drawCircle(rightElbow.x, rightElbow.y, 6, elbowAboveEye ? 'rgba(76,175,80,0.95)' : 'rgba(244,67,54,0.95)');
+                      }
+                      
+                      // Color wrists: green when above elbow (extended), orange when below (flexed)
+                      if (leftWrist && leftElbow) {
+                        const elbowAboveEye = leftElbow.y < avgEyeY;
+                        const extended = leftWrist.y < leftElbow.y;
+                        let color = 'rgba(128,128,128,0.95)'; // gray if elbow not above eye
+                        if (elbowAboveEye) {
+                          color = extended ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)'; // green=extended, orange=flexed
+                        }
+                        drawCircle(leftWrist.x, leftWrist.y, 6, color);
+                      }
+                      if (rightWrist && rightElbow) {
+                        const elbowAboveEye = rightElbow.y < avgEyeY;
+                        const extended = rightWrist.y < rightElbow.y;
+                        let color = 'rgba(128,128,128,0.95)'; // gray if elbow not above eye
+                        if (elbowAboveEye) {
+                          color = extended ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)'; // green=extended, orange=flexed
+                        }
+                        drawCircle(rightWrist.x, rightWrist.y, 6, color);
+                      }
+                    }
+                  }
                 }
               } catch (e) {
                 // don't let overlay drawing break detection
@@ -538,6 +587,57 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
                 setRepsCount(repsCountRef.current);
                 lastRepTimeRef.current = now;
                 lastRightCurlUpRef.current = false;
+              }
+            }
+          } else if (exercise === 'triceps_extensions') {
+            // Triceps extensions: per-arm independent tracking similar to bicep curls but inverted.
+            // Track when wrist goes from above elbow (extended) -> below elbow (flexed) -> back above (extended).
+            // Require elbow to be above eye level for safety and proper form.
+            const leftWrist = smoothedKeypoints.find((k: any) => k.name === 'left_wrist');
+            const rightWrist = smoothedKeypoints.find((k: any) => k.name === 'right_wrist');
+            const leftElbow = smoothedKeypoints.find((k: any) => k.name === 'left_elbow');
+            const rightElbow = smoothedKeypoints.find((k: any) => k.name === 'right_elbow');
+            const leftEye = smoothedKeypoints.find((k: any) => k.name === 'left_eye');
+            const rightEye = smoothedKeypoints.find((k: any) => k.name === 'right_eye');
+            
+            // Average eye position for validation
+            const avgEyeY = (leftEye && rightEye) ? (leftEye.y + rightEye.y) / 2 : null;
+            
+            // Left arm triceps extension detection
+            if (leftWrist && leftElbow && avgEyeY !== null) {
+              const elbowAboveEye = leftElbow.y < avgEyeY; // elbow must be above eye level
+              const wristAboveElbow = leftWrist.y < leftElbow.y; // extended position
+              
+              if (elbowAboveEye) {
+                if (!wristAboveElbow && !lastLeftTricepsExtendedRef.current) {
+                  // Entering flexed position (wrist below elbow)
+                  lastLeftTricepsExtendedRef.current = true;
+                } else if (wristAboveElbow && lastLeftTricepsExtendedRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
+                  // Completing rep: went from extended -> flexed -> back to extended
+                  repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
+                  setRepsCount(repsCountRef.current);
+                  lastRepTimeRef.current = now;
+                  lastLeftTricepsExtendedRef.current = false;
+                }
+              }
+            }
+            
+            // Right arm triceps extension detection
+            if (rightWrist && rightElbow && avgEyeY !== null) {
+              const elbowAboveEye = rightElbow.y < avgEyeY; // elbow must be above eye level
+              const wristAboveElbow = rightWrist.y < rightElbow.y; // extended position
+              
+              if (elbowAboveEye) {
+                if (!wristAboveElbow && !lastRightTricepsExtendedRef.current) {
+                  // Entering flexed position (wrist below elbow)
+                  lastRightTricepsExtendedRef.current = true;
+                } else if (wristAboveElbow && lastRightTricepsExtendedRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
+                  // Completing rep: went from extended -> flexed -> back to extended
+                  repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
+                  setRepsCount(repsCountRef.current);
+                  lastRepTimeRef.current = now;
+                  lastRightTricepsExtendedRef.current = false;
+                }
               }
             }
           } else if (exercise === 'band_pull_aparts') {
