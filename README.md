@@ -1,108 +1,31 @@
 # DeskFit: Physical Fitness App for Desk Workers
 
-DeskFit is a React + Vite + TypeScript application designed to help desk workers stay active. The app uses TensorFlow.js for pose estimation, includes a timer, webcam integration, and a simple UI for exercise prompts and rep counting. All processing is local for privacy.
+## Overview
+DeskFit is an application designed to help knowledge workers who spend most of their day at a desk stay physically active. The app uses the user's webcam to track and count exercise movements, prompting users to perform short exercises at regular intervals.
 
-## Features
+DeskFit is a React + Vite + TypeScript application. The app uses TensorFlow.js for pose estimation, includes a timer, webcam integration, and a simple UI for exercise prompts and rep counting. In the MVP, all processing is local for simplicity and maximum privacy.
 
-- Set a timer for exercise breaks
-- Exercise prompts with rep targets
-- Webcam integration for pose tracking
-- Real-time rep counting using TensorFlow.js
-- All processing is local (privacy-first)
+## What the App Does
+- Allows users to set a timer for exercise breaks.
+- When the timer goes off, the app pops up and instructs the user to perform a specific exercise (e.g., arm raises).
+- Uses the webcam and pose estimation to track and count exercise repetitions.
+- Once the user completes the required reps, the timer resets for the next break.
 
-## Getting Started
+## MVP (Minimum Viable Product) Features
+- **User Timer**: User can set a custom interval for exercise reminders.
+- **Exercise Prompt**: When the timer ends, the app displays a prompt with the exercise and required reps.
+- **Webcam Integration**: Accesses the user's webcam (with permission) for exercise tracking.
+- **Pose Estimation**: Uses TensorFlow.js (e.g., MoveNet or PoseNet) to detect and count reps for a single exercise (e.g., arm raises). Optional pose keypoint overlays to help users see thresholds required to complete exercises (e.g. how high to lift arms).
+- **Rep Counter**: Displays the current rep count and notifies the user when the set is complete.
+- **Local Processing**: All webcam and pose data is processed locally for privacy.
+- **Daily Goals**: Daily goals and exercise task count completion.
+- **Simple UI**: Clean, minimal interface for timer, exercise prompt, webcam feed, and rep counter.
 
-1. Install dependencies:
+## Out of Scope for MVP
+- Multiple exercises or routines
+- Gamification or analytics
+- Social or sharing features
+- Integration with external devices or calendars
 
-   ```sh
-   npm install
-   ```
-
-2. Start the development server:
-
-   ```sh
-   npm run dev
-   ```
-
-3. Open your browser to the provided local URL.
-
-## MVP Scope
-
-See `../README_MVP.md` for detailed MVP requirements.
-
----
-
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
+## Enhancements Scope
+See `README_ENHANCEMENTS.md` for enhancements under consideration.
