@@ -6,7 +6,7 @@ interface UsePoseDetectionProps {
   enabled: boolean;
   repsTarget: number;
   setRepsCount: (val: number) => void;
-  exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses' | 'lateral_raise' | 'knee_raises' | 'bicep_curls' | 'band_pull_aparts'
+  exercise: string; // 'squats' | 'jumping_jacks' | 'shoulder_presses' | 'lateral_raise' | 'knee_raises' | 'bicep_curls' | 'band_pull_aparts' | 'low_to_high_chest_flies' | 'svend_chest_press'
   overlayRef?: React.RefObject<HTMLCanvasElement | null>;
 }
 
@@ -18,6 +18,8 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
   const lastRightCurlUpRef = useRef(false);
   // Track band pull-apart wide state (both arms moved outward)
   const bandWideRef = useRef(false);
+  // Track Svend chest press extended state (either wrist extended outward)
+  const svendExtendedRef = useRef(false);
   const lastRepTimeRef = useRef<number>(0);
   const REP_DEBOUNCE_MS = 800;
   const repsCountRef = useRef(0);
@@ -150,14 +152,65 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
             return !!(leftWrist && rightWrist && leftShoulder && rightShoulder && leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y);
           })();
 
-          if (exercise === 'shoulder_presses' || exercise === 'lateral_raise' || exercise === 'jumping_jacks') {
-            // All three use same arms-above-shoulders detection per request
+          if (exercise === 'shoulder_presses' || exercise === 'lateral_raise' || exercise === 'jumping_jacks' || exercise === 'low_to_high_chest_flies') {
+            // All four use same arms-above-shoulders detection per request
             if (armsAboveShoulders && !lastArmUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
               repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
               setRepsCount(repsCountRef.current);
               lastRepTimeRef.current = now;
             }
             lastArmUpRef.current = armsAboveShoulders;
+            
+            // Draw overlay for chest flies: show shoulder height reference and wrist positions
+            if (exercise === 'low_to_high_chest_flies' && typeof overlayRef !== 'undefined' && overlayRef && overlayRef.current) {
+              const leftWrist = keypoints.find(k => k.name === 'left_wrist');
+              const rightWrist = keypoints.find(k => k.name === 'right_wrist');
+              const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
+              const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+              if (leftWrist && rightWrist && leftShoulder && rightShoulder) {
+                const canvas = overlayRef.current;
+                const ctx = canvas.getContext('2d');
+                if (ctx && videoRef.current) {
+                  const intrinsicW = videoRef.current.videoWidth || videoRef.current.width || 640;
+                  const intrinsicH = videoRef.current.videoHeight || videoRef.current.height || 480;
+                  const clientW = canvas.clientWidth || intrinsicW;
+                  const clientH = canvas.clientHeight || intrinsicH;
+                  const dpr = window.devicePixelRatio || 1;
+                  const targetW = Math.max(1, Math.round(clientW * dpr));
+                  const targetH = Math.max(1, Math.round(clientH * dpr));
+                  if (canvas.width !== targetW || canvas.height !== targetH) {
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                  }
+                  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                  ctx.clearRect(0, 0, clientW, clientH);
+                  
+                  const mapX = (x: number) => (x / intrinsicW) * clientW;
+                  const mapY = (y: number) => (y / intrinsicH) * clientH;
+                  
+                  // Draw shoulder height reference line (green when wrists above, orange when below)
+                  const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+                  ctx.strokeStyle = armsAboveShoulders ? 'rgba(76,175,80,0.8)' : 'rgba(255,165,0,0.8)';
+                  ctx.lineWidth = 3;
+                  ctx.setLineDash([8, 4]);
+                  ctx.beginPath();
+                  ctx.moveTo(0, mapY(avgShoulderY));
+                  ctx.lineTo(clientW, mapY(avgShoulderY));
+                  ctx.stroke();
+                  ctx.setLineDash([]);
+                  
+                  // Draw wrists
+                  ctx.fillStyle = armsAboveShoulders ? 'rgba(76,175,80,0.9)' : 'rgba(255,165,0,0.9)';
+                  ctx.beginPath(); ctx.arc(mapX(leftWrist.x), mapY(leftWrist.y), 8, 0, Math.PI * 2); ctx.fill();
+                  ctx.beginPath(); ctx.arc(mapX(rightWrist.x), mapY(rightWrist.y), 8, 0, Math.PI * 2); ctx.fill();
+                  
+                  // Draw shoulders for reference
+                  ctx.fillStyle = 'rgba(33,150,243,0.7)';
+                  ctx.beginPath(); ctx.arc(mapX(leftShoulder.x), mapY(leftShoulder.y), 6, 0, Math.PI * 2); ctx.fill();
+                  ctx.beginPath(); ctx.arc(mapX(rightShoulder.x), mapY(rightShoulder.y), 6, 0, Math.PI * 2); ctx.fill();
+                }
+              }
+            }
           } else if (exercise === 'squats') {
             // Improved squat detection: average hip at least 0.25x torso length below average shoulder
             const leftHip = keypoints.find(k => k.name === 'left_hip');
@@ -342,6 +395,100 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
                   // Draw line between wrists
                   ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
                   ctx.beginPath(); ctx.moveTo(mapX(leftWrist.x), mapY(leftWrist.y)); ctx.lineTo(mapX(rightWrist.x), mapY(rightWrist.y)); ctx.stroke();
+                }
+              }
+            }
+          } else if (exercise === 'svend_chest_press') {
+            // Svend chest press: track both wrists with shoulder-to-elbow + 50% radius.
+            // Count rep when either wrist extends beyond radius then returns (sideways positioning).
+            const leftWrist = keypoints.find(k => k.name === 'left_wrist');
+            const rightWrist = keypoints.find(k => k.name === 'right_wrist');
+            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
+            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+            const leftElbow = keypoints.find(k => k.name === 'left_elbow');
+            const rightElbow = keypoints.find(k => k.name === 'right_elbow');
+            if (leftWrist && rightWrist && leftShoulder && rightShoulder && leftElbow && rightElbow) {
+              // Calculate shoulder-to-elbow distance + 50% as extension threshold for each arm
+              const leftArmLength = Math.hypot(leftShoulder.x - leftElbow.x, leftShoulder.y - leftElbow.y);
+              const rightArmLength = Math.hypot(rightShoulder.x - rightElbow.x, rightShoulder.y - rightElbow.y);
+              const leftThreshold = leftArmLength * 1.5; // shoulder-to-elbow + 50%
+              const rightThreshold = rightArmLength * 1.5;
+              
+              // Check if either wrist is extended beyond its threshold
+              const leftDist = Math.hypot(leftWrist.x - leftShoulder.x, leftWrist.y - leftShoulder.y);
+              const rightDist = Math.hypot(rightWrist.x - rightShoulder.x, rightWrist.y - rightShoulder.y);
+              const leftExtended = leftDist > leftThreshold;
+              const rightExtended = rightDist > rightThreshold;
+              const eitherExtended = leftExtended || rightExtended;
+              
+              // Check if both wrists are back within their thresholds
+              const bothRetracted = leftDist <= leftThreshold && rightDist <= rightThreshold;
+              
+              const nowSinceLast = now - lastRepTimeRef.current;
+              
+              // State machine: extended -> retracted cycle
+              if (eitherExtended && !svendExtendedRef.current && nowSinceLast > REP_DEBOUNCE_MS) {
+                svendExtendedRef.current = true;
+              } else if (svendExtendedRef.current && bothRetracted && nowSinceLast > REP_DEBOUNCE_MS) {
+                repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
+                setRepsCount(repsCountRef.current);
+                lastRepTimeRef.current = now;
+                svendExtendedRef.current = false;
+              }
+              
+              // Draw overlay: show threshold circles and wrist positions
+              if (typeof overlayRef !== 'undefined' && overlayRef && overlayRef.current) {
+                const canvas = overlayRef.current;
+                const ctx = canvas.getContext('2d');
+                if (ctx && videoRef.current) {
+                  const intrinsicW = videoRef.current.videoWidth || videoRef.current.width || 640;
+                  const intrinsicH = videoRef.current.videoHeight || videoRef.current.height || 480;
+                  const clientW = canvas.clientWidth || intrinsicW;
+                  const clientH = canvas.clientHeight || intrinsicH;
+                  const dpr = window.devicePixelRatio || 1;
+                  const targetW = Math.max(1, Math.round(clientW * dpr));
+                  const targetH = Math.max(1, Math.round(clientH * dpr));
+                  if (canvas.width !== targetW || canvas.height !== targetH) {
+                    canvas.width = targetW;
+                    canvas.height = targetH;
+                  }
+                  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                  ctx.clearRect(0, 0, clientW, clientH);
+                  
+                  const mapX = (x: number) => (x / intrinsicW) * clientW;
+                  const mapY = (y: number) => (y / intrinsicH) * clientH;
+                  const mapLen = (l: number) => (l / intrinsicW) * clientW;
+                  
+                  // Draw threshold circles around shoulders (dashed, blue)
+                  ctx.strokeStyle = 'rgba(33,150,243,0.6)';
+                  ctx.lineWidth = 2;
+                  ctx.setLineDash([6, 4]);
+                  ctx.beginPath();
+                  ctx.arc(mapX(leftShoulder.x), mapY(leftShoulder.y), mapLen(leftThreshold), 0, Math.PI * 2);
+                  ctx.stroke();
+                  ctx.beginPath();
+                  ctx.arc(mapX(rightShoulder.x), mapY(rightShoulder.y), mapLen(rightThreshold), 0, Math.PI * 2);
+                  ctx.stroke();
+                  ctx.setLineDash([]);
+                  
+                  // Draw shoulders
+                  ctx.fillStyle = 'rgba(33,150,243,0.8)';
+                  ctx.beginPath(); ctx.arc(mapX(leftShoulder.x), mapY(leftShoulder.y), 6, 0, Math.PI * 2); ctx.fill();
+                  ctx.beginPath(); ctx.arc(mapX(rightShoulder.x), mapY(rightShoulder.y), 6, 0, Math.PI * 2); ctx.fill();
+                  
+                  // Draw wrists (green when retracted, red when extended)
+                  const leftColor = leftExtended ? 'rgba(244,67,54,0.9)' : 'rgba(76,175,80,0.9)';
+                  const rightColor = rightExtended ? 'rgba(244,67,54,0.9)' : 'rgba(76,175,80,0.9)';
+                  ctx.fillStyle = leftColor;
+                  ctx.beginPath(); ctx.arc(mapX(leftWrist.x), mapY(leftWrist.y), 8, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = rightColor;
+                  ctx.beginPath(); ctx.arc(mapX(rightWrist.x), mapY(rightWrist.y), 8, 0, Math.PI * 2); ctx.fill();
+                  
+                  // Draw connection lines from shoulders to wrists
+                  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                  ctx.lineWidth = 2;
+                  ctx.beginPath(); ctx.moveTo(mapX(leftShoulder.x), mapY(leftShoulder.y)); ctx.lineTo(mapX(leftWrist.x), mapY(leftWrist.y)); ctx.stroke();
+                  ctx.beginPath(); ctx.moveTo(mapX(rightShoulder.x), mapY(rightShoulder.y)); ctx.lineTo(mapX(rightWrist.x), mapY(rightWrist.y)); ctx.stroke();
                 }
               }
             }

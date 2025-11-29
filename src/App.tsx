@@ -95,7 +95,7 @@ const LS_KEYS = {
 
 // --- Default Values ---
 const DEFAULT_TIMER = 60;
-const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12, bicep_curls: 12, band_pull_aparts: 12 };
+const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12, bicep_curls: 12, band_pull_aparts: 12, low_to_high_chest_flies: 12, svend_chest_press: 12 };
 const DEFAULT_GOAL = { Mon: 5, Tue: 5, Wed: 5, Thu: 5, Fri: 5, Sat: 2, Sun: 2 };
 
 // --- Helper Functions ---
@@ -550,45 +550,64 @@ function App() {
       </nav>
       {/* Exercise and Reps Row */}
       {!showPrompt && (
-        <div style={{ display: 'flex', gap: 24, marginBottom: 24, alignItems: 'flex-end' }}>
-          <div style={{ flex: 1 }}>
-            <label htmlFor="exercise-select" style={{ display: 'block', marginBottom: 4 }}>Exercise</label>
-            <select
-              id="exercise-select"
-              value={selectedExercise}
-              onChange={e => {
-                setSelectedExercise(e.target.value);
-                setRepsTarget(defaultReps[e.target.value] || 10);
-              }}
-              style={{ width: '100%', minWidth: 120, padding: 4 }}
-            >
-              <option value="squats">Squats</option>
-              <option value="jumping_jacks">Jumping Jacks</option>
-              <option value="shoulder_presses">Shoulder Presses</option>
-              <option value="lateral_raise">Lateral Raise</option>
-              <option value="knee_raises">Knee Raises</option>
-              <option value="bicep_curls">Bicep Curls</option>
-              <option value="band_pull_aparts">Band Pull-aparts</option>
-            </select>
+        <>
+          <div style={{ display: 'flex', gap: 24, marginBottom: 24, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="exercise-select" style={{ display: 'block', marginBottom: 4 }}>Exercise</label>
+              <select
+                id="exercise-select"
+                value={selectedExercise}
+                onChange={e => {
+                  setSelectedExercise(e.target.value);
+                  setRepsTarget(defaultReps[e.target.value] || 10);
+                }}
+                style={{ width: '100%', minWidth: 120, padding: 4 }}
+              >
+                <option value="squats">Squats</option>
+                <option value="jumping_jacks">Jumping Jacks</option>
+                <option value="shoulder_presses">Shoulder Presses</option>
+                <option value="lateral_raise">Lateral Raise</option>
+                <option value="knee_raises">Knee Raises</option>
+                <option value="bicep_curls">Bicep Curls</option>
+                <option value="band_pull_aparts">Band Pull-aparts</option>
+                <option value="low_to_high_chest_flies">Low-to-High Chest Flies</option>
+                <option value="svend_chest_press">Svend Chest Press</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="reps-input" style={{ display: 'block', marginBottom: 4 }}>Repetitions</label>
+              <input
+                id="reps-input"
+                type="number"
+                min={1}
+                max={50}
+                value={repsTarget}
+                onChange={e => {
+                  let val = Number(e.target.value);
+                  if (val < 1) val = 1;
+                  if (val > 50) val = 50;
+                  setRepsTarget(val);
+                }}
+                style={{ width: '100%', minWidth: 60, padding: 4 }}
+              />
+            </div>
           </div>
-          <div style={{ flex: 1 }}>
-            <label htmlFor="reps-input" style={{ display: 'block', marginBottom: 4 }}>Repetitions</label>
-            <input
-              id="reps-input"
-              type="number"
-              min={1}
-              max={50}
-              value={repsTarget}
-              onChange={e => {
-                let val = Number(e.target.value);
-                if (val < 1) val = 1;
-                if (val > 50) val = 50;
-                setRepsTarget(val);
-              }}
-              style={{ width: '100%', minWidth: 60, padding: 4 }}
-            />
-          </div>
-        </div>
+          {selectedExercise === 'svend_chest_press' && (
+            <div style={{
+              background: '#e3f2fd',
+              color: '#1976d2',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              fontSize: '0.9rem',
+              marginTop: '8px',
+              border: '1px solid #bbdefb',
+              marginBottom: '24px',
+              textAlign: 'center'
+            }}>
+              💡 Turn 45-90 degrees left or right to accurately track this exercise
+            </div>
+          )}
+        </>
       )}
       {/* Timer Controls */}
       {!showPrompt && (
