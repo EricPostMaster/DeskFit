@@ -381,16 +381,18 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
 
                   // Bicep curl overlay: draw elbow baseline and color wrists by curl state
                   if (exercise === 'bicep_curls' && (leftElbow || rightElbow) && (leftWrist || rightWrist)) {
-                    // draw elbow horizontal lines
+                    // Draw a short, centered horizontal tick at each elbow x position
+                    // so the marker stays aligned with the detected elbow regardless
+                    // of canvas mirroring or intrinsic/client coordinate transforms.
+                    const tickHalf = Math.max(10, clientW * 0.06); // half-width of tick in client pixels
+                    ctx.strokeStyle = 'rgba(33,150,243,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([]);
                     if (leftElbow) {
-                      ctx.strokeStyle = 'rgba(33,150,243,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([]);
-                      ctx.beginPath(); ctx.moveTo(0, mapY(leftElbow.y)); ctx.lineTo(clientW / 2, mapY(leftElbow.y)); ctx.stroke();
-                      drawLabel('left elbow', 6, Math.max(12, mapY(leftElbow.y) - 6), 'rgba(33,150,243,0.9)');
+                      const cx = mapX(leftElbow.x);
+                      ctx.beginPath(); ctx.moveTo(cx - tickHalf, mapY(leftElbow.y)); ctx.lineTo(cx + tickHalf, mapY(leftElbow.y)); ctx.stroke();
                     }
                     if (rightElbow) {
-                      ctx.strokeStyle = 'rgba(33,150,243,0.9)'; ctx.lineWidth = 2; ctx.setLineDash([]);
-                      ctx.beginPath(); ctx.moveTo(clientW / 2, mapY(rightElbow.y)); ctx.lineTo(clientW, mapY(rightElbow.y)); ctx.stroke();
-                      drawLabel('right elbow', clientW / 2 + 6, Math.max(12, mapY(rightElbow.y) - 6), 'rgba(33,150,243,0.9)');
+                      const cx = mapX(rightElbow.x);
+                      ctx.beginPath(); ctx.moveTo(cx - tickHalf, mapY(rightElbow.y)); ctx.lineTo(cx + tickHalf, mapY(rightElbow.y)); ctx.stroke();
                     }
 
                     // color wrists: green when wrist above elbow (curl), orange otherwise
