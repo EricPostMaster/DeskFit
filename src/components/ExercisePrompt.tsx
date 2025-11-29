@@ -48,7 +48,8 @@ const ExercisePrompt: React.FC<ExercisePromptProps> = ({ repsTarget, repsCount, 
           exercise === 'lateral_raise' ? 'lateral raises' :
           exercise === 'knee_raises' ? 'knee raises' :
           exercise === 'bicep_curls' ? 'bicep curls' :
-          exercise === 'band_pull_aparts' ? 'band pull-aparts' : 'reps'
+          exercise === 'band_pull_aparts' ? 'band pull-aparts' :
+          exercise === 'triceps_extensions' ? 'triceps extensions' : 'reps'
         }</strong>
         <InfoTooltip content={exerciseInstructions[exercise] ?? 'Perform the exercise with controlled motion and proper form.'} />
       </p>

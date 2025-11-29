@@ -96,7 +96,7 @@ const LS_KEYS = {
 
 // --- Default Values ---
 const DEFAULT_TIMER = 60;
-const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12, bicep_curls: 12, band_pull_aparts: 12 };
+const DEFAULT_REPS = { squats: 10, jumping_jacks: 15, shoulder_presses: 12, lateral_raise: 12, knee_raises: 12, bicep_curls: 12, band_pull_aparts: 12, triceps_extensions: 12 };
 const DEFAULT_GOAL = { Mon: 5, Tue: 5, Wed: 5, Thu: 5, Fri: 5, Sat: 2, Sun: 2 };
 
 // --- Helper Functions ---
@@ -140,6 +140,7 @@ function populateSampleHistory() {
         shoulder_presses: Math.floor(Math.random() * 30),
         lateral_raise: Math.floor(Math.random() * 30),
         knee_raises: Math.floor(Math.random() * 30),
+        triceps_extensions: Math.floor(Math.random() * 30),
       };
       tasksHistory[dateStr] = Math.floor(Math.random() * 7);
     }
@@ -576,6 +577,7 @@ function App() {
               <option value="knee_raises">Knee Raises</option>
               <option value="bicep_curls">Bicep Curls</option>
               <option value="band_pull_aparts">Band Pull-aparts</option>
+              <option value="triceps_extensions">Triceps Extensions</option>
             </select>
           </div>
           <div style={{ flex: 1 }}>
