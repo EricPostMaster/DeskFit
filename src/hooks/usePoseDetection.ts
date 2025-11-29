@@ -359,15 +359,24 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
                   }
 
                   // Knee raise overlay: draw hip level and mark knee when raised
-                  if (exercise === 'knee_raises' && leftHip && rightHip) {
+                  if (exercise === 'knee_raises' && leftHip && rightHip && leftShoulder && rightShoulder) {
                     const avgHipY = (leftHip.y + rightHip.y) / 2;
-                    // hip line (dashed yellow)
+                    const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+                    const torsoLen = Math.abs(avgShoulderY - avgHipY) || 1;
+                    // Allow a small fraction below hip level so lower-mobility users
+                    // can still be detected. This is scaled by torso length to be
+                    // robust across different camera distances / user sizes.
+                    const KNEE_RAISE_ALLOWANCE_FRAC = 0.08; // 8% of torso length below hip
+                    const allowance = KNEE_RAISE_ALLOWANCE_FRAC * torsoLen;
+                    const visualTargetY = avgHipY + allowance; // a little below hip
+
+                    // hip+allowance line (dashed yellow)
                     ctx.strokeStyle = 'rgba(255,206,84,0.95)'; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
-                    ctx.beginPath(); ctx.moveTo(0, mapY(avgHipY)); ctx.lineTo(clientW, mapY(avgHipY)); ctx.stroke(); ctx.setLineDash([]);
-                    drawLabel('hip level', 6, Math.max(12, mapY(avgHipY) - 6), 'rgba(255,206,84,0.95)');
-                    // mark knees: green if above hip, orange otherwise
-                    if (leftKnee) drawCircle(leftKnee.x, leftKnee.y, 6, leftKnee.y < leftHip.y ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
-                    if (rightKnee) drawCircle(rightKnee.x, rightKnee.y, 6, rightKnee.y < rightHip.y ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
+                    ctx.beginPath(); ctx.moveTo(0, mapY(visualTargetY)); ctx.lineTo(clientW, mapY(visualTargetY)); ctx.stroke(); ctx.setLineDash([]);
+                    drawLabel('hip level (target)', 6, Math.max(12, mapY(visualTargetY) - 6), 'rgba(255,206,84,0.95)');
+                    // mark knees: green if above the (relaxed) target, orange otherwise
+                    if (leftKnee) drawCircle(leftKnee.x, leftKnee.y, 6, leftKnee.y < (leftHip.y + allowance) ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
+                    if (rightKnee) drawCircle(rightKnee.x, rightKnee.y, 6, rightKnee.y < (rightHip.y + allowance) ? 'rgba(76,175,80,0.95)' : 'rgba(255,165,0,0.95)');
                   }
 
                   // Bicep curl overlay: draw elbow baseline and color wrists by curl state
@@ -474,14 +483,24 @@ export function usePoseDetection({ videoRef, enabled, repsTarget, setRepsCount, 
               lastArmUpRef.current = isSquatting;
             }
           } else if (exercise === 'knee_raises') {
-            // Detect single knee raised to hip level or above (one knee at a time). Count when a knee goes up.
+            // Detect single knee raised to hip level or slightly below (one knee at a time).
+            // We compute a torso-scaled allowance so the threshold adapts to user size
+            // and camera distance. This mirrors the overlay's visual target.
             const leftKnee = smoothedKeypoints.find((k: any) => k.name === 'left_knee');
             const rightKnee = smoothedKeypoints.find((k: any) => k.name === 'right_knee');
             const leftHip = smoothedKeypoints.find((k: any) => k.name === 'left_hip');
             const rightHip = smoothedKeypoints.find((k: any) => k.name === 'right_hip');
-            if (leftKnee && rightKnee && leftHip && rightHip) {
-              const leftKneeUp = leftKnee.y < leftHip.y;
-              const rightKneeUp = rightKnee.y < rightHip.y;
+            const leftShoulder = smoothedKeypoints.find((k: any) => k.name === 'left_shoulder');
+            const rightShoulder = smoothedKeypoints.find((k: any) => k.name === 'right_shoulder');
+            if (leftKnee && rightKnee && leftHip && rightHip && leftShoulder && rightShoulder) {
+              const avgHipY = (leftHip.y + rightHip.y) / 2;
+              const avgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+              const torsoLen = Math.abs(avgShoulderY - avgHipY) || 1;
+              const KNEE_RAISE_ALLOWANCE_FRAC = 0.08; // must stay in sync with overlay
+              const allowance = KNEE_RAISE_ALLOWANCE_FRAC * torsoLen;
+
+              const leftKneeUp = leftKnee.y < (leftHip.y + allowance);
+              const rightKneeUp = rightKnee.y < (rightHip.y + allowance);
               const singleKneeUp = (leftKneeUp && !rightKneeUp) || (rightKneeUp && !leftKneeUp);
               if (singleKneeUp && !lastArmUpRef.current && now - lastRepTimeRef.current > REP_DEBOUNCE_MS) {
                 repsCountRef.current = Math.min(repsCountRef.current + 1, repsTarget);
